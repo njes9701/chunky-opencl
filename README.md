@@ -1,5 +1,15 @@
 # OpenCL Plugin
 
+####Note: These fixes are generated via Codex vibe coding. 100% stability is not guaranteed, and crashes may occur.
+
+####Unofficial Fix Plugin - To-Do List
+
+##Fix GPU water rendering issues. ☐
+
+##Fix GPU misrendering of transparent light source blocks. ☐
+
+##Fix issues with staining glass. ☐
+
 This is a plugin for [Chunky](https://github.com/chunky-dev/chunky) which harnesses the power of the GPU with OpenCL 1.2+ to accelerate rendering.
 
 #### This is currently a work in progress and does not support many features. The core renderer itself is still under development so render results may change drastically between versions.
