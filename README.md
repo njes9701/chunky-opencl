@@ -6,9 +6,9 @@
 
 #### Fix GPU water rendering issues. ☐
 
-#### Fix GPU misrendering of transparent light source blocks. ☐
+#### Fix GPU misrendering of transparent light source blocks. (Temporarily remove invisible lights)
 
-#### Fix issues with staining glass. ☐
+#### Fix issues with staining glass. done!
 
 This is a plugin for [Chunky](https://github.com/chunky-dev/chunky) which harnesses the power of the GPU with OpenCL 1.2+ to accelerate rendering.
 
