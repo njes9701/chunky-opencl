@@ -5,3 +5,6 @@
 *.log
 /src/main/resources/kernel/.idea/
 /src/main/resources/kernel/cmake-build-debug/
+/.gradle-user-home/
+/chunky-core-*.jar
+/chunky-master/
