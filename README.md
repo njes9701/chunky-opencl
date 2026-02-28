@@ -2,13 +2,29 @@
 
 ## Note: These fixes are generated via Codex vibe coding. 100% stability is not guaranteed, and crashes may occur.
 
-## Unofficial Fix Plugin - To-Do List
+## Unofficial Fix Plugin - Current Status
 
-#### Fix GPU water rendering issues. ☐
+### Fixed / Improved
 
-#### Fix GPU misrendering of transparent light source blocks. (Temporarily remove invisible lights)
+- Parallel projection Y-clip / large-octree ray origin issue
+- Glass / stained glass / glass pane rendering
+- Glass exit-face handling when rays start inside the block
+- Black back-face artifacts on clear glass
+- Camera medium initialization when starting inside refractive glass
+- Internal seams between adjacent same-material glass blocks reduced
+- Scene reset buffer clearing to avoid stale black-frame accumulation after camera movement
+- Visible emissive block handling for Glowstone / Sea Lantern style blocks
+- Emitter intensity control support
+- Stronger stained-glass tint transmission for visible emissive blocks
+- Invisible `LightBlock` emitters are currently disabled on purpose for stability
 
-#### Fix issues with staining glass. done!
+### Current Limitations
+
+- This is still an unofficial fix build
+- 100% CPU parity is not guaranteed
+- Invisible `LightBlock` emitters are ignored for now
+- Entity-based emitters such as campfires / candles are not yet fully matched to CPU behavior
+- Some advanced lighting behavior is still experimental
 
 This is a plugin for [Chunky](https://github.com/chunky-dev/chunky) which harnesses the power of the GPU with OpenCL 1.2+ to accelerate rendering.
 
