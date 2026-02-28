@@ -79,6 +79,7 @@ int4 EmitterGrid_getEmitter(EmitterGrid self, int emitterIndex) {
 
 typedef struct {
     Octree octree;
+    Octree waterOctree;
     Bvh worldBvh;
     Bvh actorBvh;
     BlockPalette blockPalette;
@@ -104,6 +105,7 @@ bool closestIntersect(Scene self, image2d_array_t atlas, Ray ray, IntersectionRe
 
         bool hit = false;
         hit |= Octree_octreeIntersect(self.octree, atlas, self.blockPalette, self.materialPalette, self.drawDepth, tempRay, &tempRecord, sample);
+        hit |= Octree_octreeIntersect(self.waterOctree, atlas, self.blockPalette, self.materialPalette, self.drawDepth, tempRay, &tempRecord, sample);
         hit |= Bvh_intersect(self.worldBvh, atlas, self.materialPalette, tempRay, &tempRecord, sample);
         hit |= Bvh_intersect(self.actorBvh, atlas, self.materialPalette, tempRay, &tempRecord, sample);
 

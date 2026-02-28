@@ -5,10 +5,12 @@ import dev.thatredox.chunkynative.common.export.Packer;
 import dev.thatredox.chunkynative.common.export.ResourcePalette;
 import dev.thatredox.chunkynative.common.export.models.PackedAabbModel;
 import dev.thatredox.chunkynative.common.export.models.PackedQuadModel;
+import dev.thatredox.chunkynative.common.export.models.PackedWaterModel;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import se.llbit.chunky.block.AbstractModelBlock;
 import se.llbit.chunky.block.Block;
 import se.llbit.chunky.block.minecraft.LightBlock;
+import se.llbit.chunky.block.minecraft.Water;
 import se.llbit.chunky.model.AABBModel;
 import se.llbit.chunky.model.QuadModel;
 import se.llbit.chunky.model.Tint;
@@ -25,11 +27,15 @@ public class PackedBlock implements Packer {
     public PackedBlock(Block block, AbstractTextureLoader textureLoader,
                        ResourcePalette<PackedMaterial> materialPalette,
                        ResourcePalette<PackedAabbModel> aabbModels,
-                       ResourcePalette<PackedQuadModel> quadModels) {
+                       ResourcePalette<PackedQuadModel> quadModels,
+                       ResourcePalette<PackedWaterModel> waterModels) {
         if (block instanceof LightBlock) {
             modelType = 4;
             modelPointer = materialPalette.put(new PackedMaterial(Texture.light, 0xFE000000,
                     block.emittance, block.specular, block.metalness, block.roughness, textureLoader));
+        } else if (block instanceof Water) {
+            modelType = 5;
+            modelPointer = waterModels.put(new PackedWaterModel((Water) block, textureLoader, materialPalette));
         } else if (block instanceof AbstractModelBlock) {
             AbstractModelBlock b = (AbstractModelBlock) block;
             if (b.getModel() instanceof AABBModel) {
@@ -79,6 +85,7 @@ public class PackedBlock implements Packer {
      * 1 - Full size block
      * 2 - AABB model
      * 3 - Quad model
+     * 5 - Water model
      * The second integer is a pointer to the model object in its respective palette.
      */
     @Override

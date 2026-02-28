@@ -4,6 +4,7 @@ import dev.thatredox.chunkynative.common.export.models.PackedAabbModel;
 import dev.thatredox.chunkynative.common.export.models.PackedBvhNode;
 import dev.thatredox.chunkynative.common.export.models.PackedQuadModel;
 import dev.thatredox.chunkynative.common.export.models.PackedTriangleModel;
+import dev.thatredox.chunkynative.common.export.models.PackedWaterModel;
 import dev.thatredox.chunkynative.common.export.primitives.PackedBlock;
 import dev.thatredox.chunkynative.common.export.primitives.PackedMaterial;
 import dev.thatredox.chunkynative.common.export.primitives.PackedSun;
@@ -27,13 +28,15 @@ public abstract class AbstractSceneLoader {
     protected int modCount = 0;
     protected WeakReference<BVH> prevWorldBvh = new WeakReference<>(null, null);
     protected WeakReference<BVH> prevActorBvh = new WeakReference<>(null, null);
-    protected WeakReference<Octree.OctreeImplementation> prevOctree = new WeakReference<>(null, null);
+    protected WeakReference<Octree.OctreeImplementation> prevWorldOctree = new WeakReference<>(null, null);
+    protected WeakReference<Octree.OctreeImplementation> prevWaterOctree = new WeakReference<>(null, null);
 
     protected AbstractTextureLoader texturePalette = null;
     protected ResourcePalette<PackedBlock> blockPalette = null;
     protected CachedResourcePalette<PackedMaterial> materialPalette = null;
     protected ResourcePalette<PackedAabbModel> aabbPalette = null;
     protected ResourcePalette<PackedQuadModel> quadPalette = null;
+    protected ResourcePalette<PackedWaterModel> waterPalette = null;
     protected ResourcePalette<PackedTriangleModel> trigPalette = null;
     protected int[] worldBvh = null;
     protected int[] actorBvh = null;
@@ -47,8 +50,10 @@ public abstract class AbstractSceneLoader {
     protected boolean ensureLoad(Scene scene, boolean force) {
         if (force ||
                 this.texturePalette == null || this.blockPalette == null || this.materialPalette == null ||
-                this.aabbPalette == null || this.quadPalette == null || this.trigPalette == null ||
-                this.prevOctree.get() != scene.getWorldOctree().getImplementation()) {
+                this.aabbPalette == null || this.quadPalette == null || this.waterPalette == null ||
+                this.trigPalette == null ||
+                this.prevWorldOctree.get() != scene.getWorldOctree().getImplementation() ||
+                this.prevWaterOctree.get() != scene.getWaterOctree().getImplementation()) {
             this.modCount = -1;
             return this.load(0, ResetReason.SCENE_LOADED, scene);
         }
@@ -74,6 +79,7 @@ public abstract class AbstractSceneLoader {
         CachedResourcePalette<PackedMaterial> materialPalette = new CachedResourcePalette<>(this.createMaterialPalette());
         ResourcePalette<PackedAabbModel> aabbPalette = this.createAabbModelPalette();
         ResourcePalette<PackedQuadModel> quadPalette = this.createQuadModelPalette();
+        ResourcePalette<PackedWaterModel> waterPalette = this.createWaterModelPalette();
         ResourcePalette<PackedTriangleModel> trigPalette = this.createTriangleModelPalette();
         materialPalette.put(PackedMaterial.air());
 
@@ -115,7 +121,7 @@ public abstract class AbstractSceneLoader {
         if (needTextureLoad) {
             blockMapping = scene.getPalette().getPalette().stream()
                     .mapToInt(block ->
-                            blockPalette.put(new PackedBlock(block, texturePalette, materialPalette, aabbPalette, quadPalette)))
+                            blockPalette.put(new PackedBlock(block, texturePalette, materialPalette, aabbPalette, quadPalette, waterPalette)))
                     .toArray();
             if (worldBvh != BVH.EMPTY) {
                 packedWorldBvh = loadBvh((BinaryBVH) worldBvh, texturePalette, materialPalette, trigPalette);
@@ -134,6 +140,7 @@ public abstract class AbstractSceneLoader {
             if (this.materialPalette != null) this.materialPalette.release();
             if (this.aabbPalette != null) this.aabbPalette.release();
             if (this.quadPalette != null) this.quadPalette.release();
+            if (this.waterPalette != null) this.waterPalette.release();
             if (this.trigPalette != null) this.trigPalette.release();
 
             this.texturePalette = texturePalette;
@@ -141,6 +148,7 @@ public abstract class AbstractSceneLoader {
             this.materialPalette = materialPalette;
             this.aabbPalette = aabbPalette;
             this.quadPalette = quadPalette;
+            this.waterPalette = waterPalette;
             this.trigPalette = trigPalette;
             this.worldBvh = packedWorldBvh;
             this.actorBvh = packedActorBvh;
@@ -148,12 +156,18 @@ public abstract class AbstractSceneLoader {
         }
 
         // Need to reload octree
-        Octree.OctreeImplementation impl = scene.getWorldOctree().getImplementation();
-        if (resetReason == ResetReason.SCENE_LOADED || prevOctree.get() != impl) {
-            prevOctree = new WeakReference<>(impl, null);
-            if (impl instanceof PackedOctree) {
+        Octree.OctreeImplementation worldImpl = scene.getWorldOctree().getImplementation();
+        Octree.OctreeImplementation waterImpl = scene.getWaterOctree().getImplementation();
+        if (resetReason == ResetReason.SCENE_LOADED ||
+                prevWorldOctree.get() != worldImpl ||
+                prevWaterOctree.get() != waterImpl) {
+            prevWorldOctree = new WeakReference<>(worldImpl, null);
+            prevWaterOctree = new WeakReference<>(waterImpl, null);
+            if (worldImpl instanceof PackedOctree && waterImpl instanceof PackedOctree) {
                 assert blockMapping != null;
-                if (!loadOctree(((PackedOctree) impl).treeData, impl.getDepth(), blockMapping, blockPalette))
+                if (!loadWorldOctree(((PackedOctree) worldImpl).treeData, worldImpl.getDepth(), blockMapping, blockPalette))
+                    return false;
+                if (!loadWaterOctree(((PackedOctree) waterImpl).treeData, waterImpl.getDepth(), blockMapping, blockPalette))
                     return false;
             } else {
                 Log.error("Octree implementation must be PACKED");
@@ -184,12 +198,14 @@ public abstract class AbstractSceneLoader {
         return out;
     }
 
-    protected abstract boolean loadOctree(int[] octree, int depth, int[] blockMapping, ResourcePalette<PackedBlock> blockPalette);
+    protected abstract boolean loadWorldOctree(int[] octree, int depth, int[] blockMapping, ResourcePalette<PackedBlock> blockPalette);
+    protected abstract boolean loadWaterOctree(int[] octree, int depth, int[] blockMapping, ResourcePalette<PackedBlock> blockPalette);
 
     protected abstract AbstractTextureLoader createTextureLoader();
     protected abstract ResourcePalette<PackedBlock> createBlockPalette();
     protected abstract ResourcePalette<PackedMaterial> createMaterialPalette();
     protected abstract ResourcePalette<PackedAabbModel> createAabbModelPalette();
     protected abstract ResourcePalette<PackedQuadModel> createQuadModelPalette();
+    protected abstract ResourcePalette<PackedWaterModel> createWaterModelPalette();
     protected abstract ResourcePalette<PackedTriangleModel> createTriangleModelPalette();
 }

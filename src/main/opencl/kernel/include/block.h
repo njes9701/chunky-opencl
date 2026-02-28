@@ -15,14 +15,16 @@ typedef struct {
     __global const int* blockPalette;
     __global const int* quadModels;
     __global const int* aabbModels;
+    __global const int* waterModels;
     MaterialPalette* materialPalette;
 } BlockPalette;
 
-BlockPalette BlockPalette_new(__global const int* blockPalette, __global const int* quadModels, __global const int* aabbModels, MaterialPalette* materialPalette) {
+BlockPalette BlockPalette_new(__global const int* blockPalette, __global const int* quadModels, __global const int* aabbModels, __global const int* waterModels, MaterialPalette* materialPalette) {
     BlockPalette p;
     p.blockPalette = blockPalette;
     p.quadModels = quadModels;
     p.aabbModels = aabbModels;
+    p.waterModels = waterModels;
     p.materialPalette = materialPalette;
     return p;
 }
@@ -49,6 +51,8 @@ int BlockPalette_primaryMaterial(BlockPalette self, int block) {
         case 1:
         case 4:
             return modelPointer;
+        case 5:
+            return self.waterModels[modelPointer + 0];
         case 2: {
             int boxes = self.aabbModels[modelPointer];
             for (int i = 0; i < boxes; i++) {
@@ -87,6 +91,7 @@ int BlockPalette_emitterFaceCount(BlockPalette self, int block) {
         default:
         case 0:
         case 4:
+        case 5:
             return 0;
         case 1:
             return 6;
@@ -239,6 +244,140 @@ bool BlockPalette_sampleEmitterFace(BlockPalette self, int block, int faceIndex,
     }
 }
 
+float WaterModel_cornerHeight(int level) {
+    switch (level & 7) {
+        case 0: return 14.0f / 16.0f;
+        case 1: return 12.25f / 16.0f;
+        case 2: return 10.5f / 16.0f;
+        case 3: return 8.75f / 16.0f;
+        case 4: return 7.0f / 16.0f;
+        case 5: return 5.25f / 16.0f;
+        case 6: return 3.5f / 16.0f;
+        default: return 1.75f / 16.0f;
+    }
+}
+
+bool WaterModel_sampleTriangle(
+        float3 a,
+        float3 b,
+        float3 c,
+        float2 ta,
+        float2 tb,
+        float2 tc,
+        Material material,
+        image2d_array_t atlas,
+        Ray ray,
+        IntersectionRecord* record,
+        MaterialSample* sample
+) {
+    float3 e1 = b - a;
+    float3 e2 = c - a;
+    float3 pvec = cross(ray.direction, e2);
+    float det = dot(e1, pvec);
+    if (fabs(det) <= EPS) {
+        return false;
+    }
+
+    float recip = 1.0f / det;
+    float3 tvec = ray.origin - a;
+    float u = dot(tvec, pvec) * recip;
+    if (u < 0.0f || u > 1.0f) {
+        return false;
+    }
+
+    float3 qvec = cross(tvec, e1);
+    float v = dot(ray.direction, qvec) * recip;
+    if (v < 0.0f || u + v > 1.0f) {
+        return false;
+    }
+
+    float t = dot(e2, qvec) * recip;
+    if (t <= EPS || t >= record->distance) {
+        return false;
+    }
+
+    float w = 1.0f - u - v;
+    float2 texCoord = ta * w + tb * u + tc * v;
+    MaterialSample tempSample;
+    if (!Material_sample_mode(material, atlas, texCoord, false, &tempSample)) {
+        return false;
+    }
+
+    float3 normal = normalize(cross(e1, e2));
+    if (dot(normal, ray.direction) > 0.0f) {
+        normal = -normal;
+    }
+
+    record->distance = t;
+    record->texCoord = texCoord;
+    record->normal = normal;
+    *sample = tempSample;
+    return true;
+}
+
+bool WaterModel_intersect(
+        __global const int* waterModels,
+        image2d_array_t atlas,
+        MaterialPalette materialPalette,
+        int modelPointer,
+        Ray ray,
+        IntersectionRecord* record,
+        MaterialSample* sample
+) {
+    int materialId = waterModels[modelPointer + 0];
+    int data = waterModels[modelPointer + 1];
+    Material material = Material_get(materialPalette, materialId);
+
+    if (((data >> 16) & 1) != 0) {
+        IntersectionRecord tempRecord = *record;
+        if (AABB_full_intersect_map_2(AABB_new(0, 1, 0, 1, 0, 1), ray, &tempRecord) &&
+                Material_sample_mode(material, atlas, tempRecord.texCoord, false, sample)) {
+            tempRecord.material = materialId;
+            *record = tempRecord;
+            return true;
+        }
+        return false;
+    }
+
+    bool hit = false;
+    IntersectionRecord tempRecord = *record;
+    float c0 = WaterModel_cornerHeight((data >> 0) & 0xF);
+    float c1 = WaterModel_cornerHeight((data >> 4) & 0xF);
+    float c2 = WaterModel_cornerHeight((data >> 8) & 0xF);
+    float c3 = WaterModel_cornerHeight((data >> 12) & 0xF);
+
+    hit |= WaterModel_sampleTriangle((float3)(0.0f, 0.0f, 0.0f), (float3)(1.0f, 0.0f, 0.0f), (float3)(0.0f, 0.0f, 1.0f),
+            (float2)(0.0f, 0.0f), (float2)(1.0f, 0.0f), (float2)(0.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+    hit |= WaterModel_sampleTriangle((float3)(0.0f, 0.0f, 1.0f), (float3)(1.0f, 0.0f, 0.0f), (float3)(1.0f, 0.0f, 1.0f),
+            (float2)(0.0f, 1.0f), (float2)(1.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+    hit |= WaterModel_sampleTriangle((float3)(0.0f, c0, 1.0f), (float3)(1.0f, c1, 1.0f), (float3)(1.0f, c2, 0.0f),
+            (float2)(0.0f, 0.0f), (float2)(1.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+    hit |= WaterModel_sampleTriangle((float3)(0.0f, c3, 0.0f), (float3)(0.0f, c0, 1.0f), (float3)(1.0f, c2, 0.0f),
+            (float2)(0.0f, 1.0f), (float2)(0.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+    hit |= WaterModel_sampleTriangle((float3)(0.0f, c3, 0.0f), (float3)(0.0f, 0.0f, 0.0f), (float3)(0.0f, c0, 1.0f),
+            (float2)(0.0f, 1.0f), (float2)(0.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+    hit |= WaterModel_sampleTriangle((float3)(0.0f, 0.0f, 1.0f), (float3)(0.0f, c0, 1.0f), (float3)(0.0f, 0.0f, 0.0f),
+            (float2)(1.0f, 0.0f), (float2)(1.0f, 1.0f), (float2)(0.0f, 0.0f), material, atlas, ray, &tempRecord, sample);
+    hit |= WaterModel_sampleTriangle((float3)(1.0f, c2, 0.0f), (float3)(1.0f, c1, 1.0f), (float3)(1.0f, 0.0f, 0.0f),
+            (float2)(0.0f, 1.0f), (float2)(1.0f, 1.0f), (float2)(0.0f, 0.0f), material, atlas, ray, &tempRecord, sample);
+    hit |= WaterModel_sampleTriangle((float3)(1.0f, c1, 1.0f), (float3)(1.0f, 0.0f, 1.0f), (float3)(1.0f, 0.0f, 0.0f),
+            (float2)(1.0f, 1.0f), (float2)(1.0f, 0.0f), (float2)(0.0f, 0.0f), material, atlas, ray, &tempRecord, sample);
+    hit |= WaterModel_sampleTriangle((float3)(0.0f, c3, 0.0f), (float3)(1.0f, c2, 0.0f), (float3)(0.0f, 0.0f, 0.0f),
+            (float2)(0.0f, 1.0f), (float2)(1.0f, 1.0f), (float2)(0.0f, 0.0f), material, atlas, ray, &tempRecord, sample);
+    hit |= WaterModel_sampleTriangle((float3)(1.0f, 0.0f, 0.0f), (float3)(0.0f, 0.0f, 0.0f), (float3)(1.0f, c2, 0.0f),
+            (float2)(1.0f, 0.0f), (float2)(0.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+    hit |= WaterModel_sampleTriangle((float3)(0.0f, c0, 1.0f), (float3)(0.0f, 0.0f, 1.0f), (float3)(1.0f, c1, 1.0f),
+            (float2)(0.0f, 1.0f), (float2)(0.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+    hit |= WaterModel_sampleTriangle((float3)(1.0f, 0.0f, 1.0f), (float3)(1.0f, c1, 1.0f), (float3)(0.0f, 0.0f, 1.0f),
+            (float2)(1.0f, 0.0f), (float2)(1.0f, 1.0f), (float2)(0.0f, 0.0f), material, atlas, ray, &tempRecord, sample);
+
+    if (hit) {
+        tempRecord.material = materialId;
+        *record = tempRecord;
+    }
+    return hit;
+}
+
 bool BlockPalette_intersectNormalizedBlock(BlockPalette self, image2d_array_t atlas, MaterialPalette materialPalette, int block, int3 blockPosition, Ray ray, IntersectionRecord* record, MaterialSample* sample) {
     // ANY_TYPE. Should not be intersected.
     if (block == 0x7FFFFFFE) {
@@ -318,6 +457,14 @@ bool BlockPalette_intersectNormalizedBlock(BlockPalette self, image2d_array_t at
         case 4: {
             // Temporarily ignore invisible light blocks entirely.
             return false;
+        }
+        case 5: {
+            hit = WaterModel_intersect(self.waterModels, atlas, materialPalette, modelPointer, tempRay, &tempRecord, sample);
+            if (hit) {
+                tempRecord.block = block;
+                *record = tempRecord;
+            }
+            return hit;
         }
     }
 }

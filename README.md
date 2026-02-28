@@ -9,6 +9,7 @@
 - Parallel projection Y-clip / large-octree ray origin issue
 - Glass / stained glass / glass pane rendering
 - Glass exit-face handling when rays start inside the block
+- Water blocks now render, including flowing water shapes (geometry only)
 - Invisible `LightBlock` emitters are currently disabled on purpose for stability
 
 ### Current Limitations
@@ -16,8 +17,14 @@
 - This is still an unofficial fix build
 - 100% CPU parity is not guaranteed
 - Invisible `LightBlock` emitters are ignored for now
+- Water optics (underwater visibility, absorption, reflections) are not implemented yet
 - Entity-based emitters such as campfires / candles are not yet fully matched to CPU behavior
 - Some advanced lighting behavior is still experimental
+
+###  Preview
+
+![Water Preview 1](@photo)
+![Water Preview 2](@photo)
 
 This is a plugin for [Chunky](https://github.com/chunky-dev/chunky) which harnesses the power of the GPU with OpenCL 1.2+ to accelerate rendering.
 

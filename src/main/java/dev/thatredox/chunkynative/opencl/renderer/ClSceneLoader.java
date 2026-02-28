@@ -5,6 +5,7 @@ import dev.thatredox.chunkynative.common.export.ResourcePalette;
 import dev.thatredox.chunkynative.common.export.models.PackedAabbModel;
 import dev.thatredox.chunkynative.common.export.models.PackedQuadModel;
 import dev.thatredox.chunkynative.common.export.models.PackedTriangleModel;
+import dev.thatredox.chunkynative.common.export.models.PackedWaterModel;
 import dev.thatredox.chunkynative.common.export.primitives.PackedBlock;
 import dev.thatredox.chunkynative.common.export.primitives.PackedMaterial;
 import dev.thatredox.chunkynative.common.export.primitives.PackedSun;
@@ -34,6 +35,8 @@ public class ClSceneLoader extends AbstractSceneLoader {
 
     protected ClIntBuffer octreeData = null;
     protected ClIntBuffer octreeDepth = null;
+    protected ClIntBuffer waterOctreeData = null;
+    protected ClIntBuffer waterOctreeDepth = null;
     protected ClIntBuffer emitterGridMeta = null;
     protected ClIntBuffer emitterGridCells = null;
     protected ClIntBuffer emitterGridIndexes = null;
@@ -117,17 +120,31 @@ public class ClSceneLoader extends AbstractSceneLoader {
         emitterGridEmitters = new ClIntBuffer(emitters, context);
     }
 
+    private int[] mapOctree(int[] octree, int[] blockMapping) {
+        return Arrays.stream(octree)
+                .map(i -> i > 0 || -i >= blockMapping.length ? i : -blockMapping[-i])
+                .toArray();
+    }
+
     @Override
-    protected boolean loadOctree(int[] octree, int depth, int[] blockMapping, ResourcePalette<PackedBlock> blockPalette) {
+    protected boolean loadWorldOctree(int[] octree, int depth, int[] blockMapping, ResourcePalette<PackedBlock> blockPalette) {
         if (octreeData != null) octreeData.close();
         if (octreeDepth != null) octreeDepth.close();
 
-        int[] mappedOctree = Arrays.stream(octree)
-                .map(i -> i > 0 || -i >= blockMapping.length ? i : -blockMapping[-i])
-                .toArray();
+        int[] mappedOctree = mapOctree(octree, blockMapping);
         octreeData = new ClIntBuffer(mappedOctree, context);
         octreeDepth = new ClIntBuffer(depth, context);
+        return true;
+    }
 
+    @Override
+    protected boolean loadWaterOctree(int[] octree, int depth, int[] blockMapping, ResourcePalette<PackedBlock> blockPalette) {
+        if (waterOctreeData != null) waterOctreeData.close();
+        if (waterOctreeDepth != null) waterOctreeDepth.close();
+
+        int[] mappedOctree = mapOctree(octree, blockMapping);
+        waterOctreeData = new ClIntBuffer(mappedOctree, context);
+        waterOctreeDepth = new ClIntBuffer(depth, context);
         return true;
     }
 
@@ -157,6 +174,11 @@ public class ClSceneLoader extends AbstractSceneLoader {
     }
 
     @Override
+    protected ResourcePalette<PackedWaterModel> createWaterModelPalette() {
+        return new ClPackedResourcePalette<>(context);
+    }
+
+    @Override
     protected ResourcePalette<PackedTriangleModel> createTriangleModelPalette() {
         return new ClPackedResourcePalette<>(context);
     }
@@ -169,6 +191,16 @@ public class ClSceneLoader extends AbstractSceneLoader {
     public ClIntBuffer getOctreeDepth() {
         assert octreeDepth != null;
         return octreeDepth;
+    }
+
+    public ClIntBuffer getWaterOctreeData() {
+        assert waterOctreeData != null;
+        return waterOctreeData;
+    }
+
+    public ClIntBuffer getWaterOctreeDepth() {
+        assert waterOctreeDepth != null;
+        return waterOctreeDepth;
     }
 
     public ClTextureLoader getTexturePalette() {
@@ -194,6 +226,11 @@ public class ClSceneLoader extends AbstractSceneLoader {
     public ClPackedResourcePalette<PackedQuadModel> getQuadPalette() {
         assert quadPalette instanceof ClPackedResourcePalette;
         return (ClPackedResourcePalette<PackedQuadModel>) quadPalette;
+    }
+
+    public ClPackedResourcePalette<PackedWaterModel> getWaterPalette() {
+        assert waterPalette instanceof ClPackedResourcePalette;
+        return (ClPackedResourcePalette<PackedWaterModel>) waterPalette;
     }
 
     public ClPackedResourcePalette<PackedTriangleModel> getTrigPalette() {

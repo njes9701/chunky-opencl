@@ -62,6 +62,18 @@ void initialize_ray_medium(Scene scene, Ray* ray) {
     int3 blockPos = intFloorFloat3(ray->origin);
     int block = Octree_get(&scene.octree, blockPos.x, blockPos.y, blockPos.z);
     if (block == 0) {
+        int waterBlock = Octree_get(&scene.waterOctree, blockPos.x, blockPos.y, blockPos.z);
+        if (waterBlock != 0) {
+            int waterMaterial = BlockPalette_primaryMaterial(scene.blockPalette, waterBlock);
+            Material waterMat = Material_get(scene.materialPalette, waterMaterial);
+            if (!Material_isOpaque(waterMat)) {
+                ray->prevMaterial = 0;
+                ray->currentMaterial = waterMaterial;
+                ray->prevBlock = 0;
+                ray->currentBlock = waterBlock;
+                return;
+            }
+        }
         ray->prevMaterial = 0;
         ray->currentMaterial = 0;
         ray->prevBlock = 0;
@@ -312,10 +324,13 @@ __kernel void render(
 
     __global const int* octreeDepth,
     __global const int* octreeData,
+    __global const int* waterOctreeDepth,
+    __global const int* waterOctreeData,
 
     __global const int* bPalette,
     __global const int* quadModels,
     __global const int* aabbModels,
+    __global const int* waterModels,
 
     __global const int* worldBvhData,
     __global const int* actorBvhData,
@@ -349,9 +364,10 @@ __kernel void render(
     Scene scene;
     scene.materialPalette = MaterialPalette_new(matPalette);
     scene.octree = Octree_create(octreeData, *octreeDepth);
+    scene.waterOctree = Octree_create(waterOctreeData, *waterOctreeDepth);
     scene.worldBvh = Bvh_new(worldBvhData, bvhTrigs, &scene.materialPalette);
     scene.actorBvh = Bvh_new(actorBvhData, bvhTrigs, &scene.materialPalette);
-    scene.blockPalette = BlockPalette_new(bPalette, quadModels, aabbModels, &scene.materialPalette);
+    scene.blockPalette = BlockPalette_new(bPalette, quadModels, aabbModels, waterModels, &scene.materialPalette);
     scene.emitterGrid = EmitterGrid_new(emitterGridMeta, emitterGridCells, emitterGridIndexes, emitterGridEmitters);
     scene.drawDepth = 256;
 
@@ -532,10 +548,13 @@ __kernel void preview(
 
     __global const int* octreeDepth,
     __global const int* octreeData,
+    __global const int* waterOctreeDepth,
+    __global const int* waterOctreeData,
 
     __global const int* bPalette,
     __global const int* quadModels,
     __global const int* aabbModels,
+    __global const int* waterModels,
 
     __global const int* worldBvhData,
     __global const int* actorBvhData,
@@ -566,9 +585,10 @@ __kernel void preview(
     Scene scene;
     scene.materialPalette = MaterialPalette_new(matPalette);
     scene.octree = Octree_create(octreeData, *octreeDepth);
+    scene.waterOctree = Octree_create(waterOctreeData, *waterOctreeDepth);
     scene.worldBvh = Bvh_new(worldBvhData, bvhTrigs, &scene.materialPalette);
     scene.actorBvh = Bvh_new(actorBvhData, bvhTrigs, &scene.materialPalette);
-    scene.blockPalette = BlockPalette_new(bPalette, quadModels, aabbModels, &scene.materialPalette);
+    scene.blockPalette = BlockPalette_new(bPalette, quadModels, aabbModels, waterModels, &scene.materialPalette);
     scene.emitterGrid = EmitterGrid_new(bPalette, bPalette, bPalette, bPalette);
     scene.drawDepth = 256;
 
