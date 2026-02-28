@@ -223,14 +223,19 @@ public class OpenClPathTracingRenderer implements Renderer {
 
     @Override
     public void sceneReset(DefaultRenderManager manager, ResetReason reason, int resetCount) {
+        boolean fullClear = reason == ResetReason.SCENE_LOADED || reason == ResetReason.MATERIALS_CHANGED;
         synchronized (manager.bufferedScene) {
             Arrays.fill(manager.bufferedScene.getSampleBuffer(), 0.0);
-            Arrays.fill(manager.bufferedScene.getBackBuffer().data, 0);
             manager.bufferedScene.spp = 0;
             manager.bufferedScene.renderTime = 0;
-            manager.bufferedScene.postProcessFrame(TaskTracker.Task.NONE);
+            if (fullClear) {
+                Arrays.fill(manager.bufferedScene.getBackBuffer().data, 0);
+                manager.bufferedScene.postProcessFrame(TaskTracker.Task.NONE);
+            }
         }
-        manager.redrawScreen();
+        if (fullClear) {
+            manager.redrawScreen();
+        }
         ContextManager.get().sceneLoader.load(resetCount, reason, manager.bufferedScene);
     }
 }

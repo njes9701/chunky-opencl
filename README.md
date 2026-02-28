@@ -9,13 +9,6 @@
 - Parallel projection Y-clip / large-octree ray origin issue
 - Glass / stained glass / glass pane rendering
 - Glass exit-face handling when rays start inside the block
-- Black back-face artifacts on clear glass
-- Camera medium initialization when starting inside refractive glass
-- Internal seams between adjacent same-material glass blocks reduced
-- Scene reset buffer clearing to avoid stale black-frame accumulation after camera movement
-- Visible emissive block handling for Glowstone / Sea Lantern style blocks
-- Emitter intensity control support
-- Stronger stained-glass tint transmission for visible emissive blocks
 - Invisible `LightBlock` emitters are currently disabled on purpose for stability
 
 ### Current Limitations
