@@ -9,8 +9,10 @@ import it.unimi.dsi.fastutil.floats.FloatList;
 import org.jocl.Pointer;
 import org.jocl.Sizeof;
 import se.llbit.chunky.main.Chunky;
+import se.llbit.chunky.renderer.projection.ProjectionMode;
 import se.llbit.chunky.renderer.scene.Camera;
 import se.llbit.chunky.renderer.scene.Scene;
+import se.llbit.math.Octree;
 import se.llbit.math.Matrix3;
 import se.llbit.math.Ray;
 import se.llbit.math.Vector3;
@@ -29,12 +31,14 @@ public class ClCamera implements AutoCloseable {
 
     private final Scene scene;
     private final ClContext context;
+    private final ProjectionMode projectionMode;
 
 
     public ClCamera(Scene scene, ClContext context) {
         this.scene = scene;
         this.context = context;
         Camera camera = scene.camera();
+        this.projectionMode = camera.getProjectionMode();
 
         int projType = -1;
         Vector3 pos = new Vector3(camera.getPosition());
@@ -44,7 +48,7 @@ public class ClCamera implements AutoCloseable {
         settings.addAll(FloatList.of(Util.vector3ToFloat(pos)));
         settings.addAll(FloatList.of(Util.matrix3ToFloat(Reflection.getFieldValue(camera, "transform", Matrix3.class))));
 
-        switch (camera.getProjectionMode()) {
+        switch (projectionMode) {
             case PINHOLE:
                 projType = 0;
                 settings.add(camera.infiniteDoF() ? 0 : (float) (camera.getSubjectDistance() / camera.getDof()));
@@ -98,6 +102,7 @@ public class ClCamera implements AutoCloseable {
 
                 cam.calcViewRay(ray, -halfWidth + (i + ox + cropX) * invHeight, -0.5 + (j + oy + cropY) * invHeight);
                 ray.o.sub(scene.getOrigin());
+                adjustParallelRayToOctreeEntry(ray);
 
                 System.arraycopy(Util.vector3ToFloat(ray.o), 0, rays, offset, 3);
                 System.arraycopy(Util.vector3ToFloat(ray.d), 0, rays, offset+3, 3);
@@ -109,6 +114,59 @@ public class ClCamera implements AutoCloseable {
                 (long) Sizeof.cl_float * rays.length, Pointer.to(rays), 0,
                 null, null);
         if (renderLock != null) renderLock.unlock();
+    }
+
+    private void adjustParallelRayToOctreeEntry(Ray ray) {
+        if (projectionMode != ProjectionMode.PARALLEL) {
+            return;
+        }
+
+        Octree octree = scene.getWorldOctree();
+        if (octree == null || octree.isInside(ray.o)) {
+            return;
+        }
+
+        double boundsMax = 1 << octree.getDepth();
+        double tMin = 0;
+        double tMax = Double.POSITIVE_INFINITY;
+
+        tMin = intersectAxis(ray.o.x, ray.d.x, boundsMax, tMin);
+        tMax = intersectAxisMax(ray.o.x, ray.d.x, boundsMax, tMax);
+        if (tMin > tMax) return;
+
+        tMin = intersectAxis(ray.o.y, ray.d.y, boundsMax, tMin);
+        tMax = intersectAxisMax(ray.o.y, ray.d.y, boundsMax, tMax);
+        if (tMin > tMax) return;
+
+        tMin = intersectAxis(ray.o.z, ray.d.z, boundsMax, tMin);
+        tMax = intersectAxisMax(ray.o.z, ray.d.z, boundsMax, tMax);
+        if (tMin > tMax || tMax < 0) return;
+
+        if (tMin > 0) {
+            ray.o.scaleAdd(tMin + Ray.OFFSET, ray.d);
+        }
+    }
+
+    private static double intersectAxis(double origin, double direction, double boundsMax, double currentMin) {
+        if (Math.abs(direction) < Ray.EPSILON) {
+            return (origin < 0 || origin > boundsMax) ? Double.POSITIVE_INFINITY : currentMin;
+        }
+
+        double invDirection = 1.0 / direction;
+        double t1 = (0 - origin) * invDirection;
+        double t2 = (boundsMax - origin) * invDirection;
+        return Math.max(currentMin, Math.min(t1, t2));
+    }
+
+    private static double intersectAxisMax(double origin, double direction, double boundsMax, double currentMax) {
+        if (Math.abs(direction) < Ray.EPSILON) {
+            return (origin < 0 || origin > boundsMax) ? Double.NEGATIVE_INFINITY : currentMax;
+        }
+
+        double invDirection = 1.0 / direction;
+        double t1 = (0 - origin) * invDirection;
+        double t2 = (boundsMax - origin) * invDirection;
+        return Math.min(currentMax, Math.max(t1, t2));
     }
 
     @Override

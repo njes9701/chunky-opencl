@@ -27,6 +27,218 @@ BlockPalette BlockPalette_new(__global const int* blockPalette, __global const i
     return p;
 }
 
+int BlockPalette_modelType(BlockPalette self, int block) {
+    if (block == 0x7FFFFFFE || block == 0) {
+        return 0;
+    }
+    return self.blockPalette[block + 0];
+}
+
+int BlockPalette_primaryMaterial(BlockPalette self, int block) {
+    if (block == 0x7FFFFFFE || block == 0) {
+        return 0;
+    }
+
+    int modelType = self.blockPalette[block + 0];
+    int modelPointer = self.blockPalette[block + 1];
+
+    switch (modelType) {
+        default:
+        case 0:
+            return 0;
+        case 1:
+        case 4:
+            return modelPointer;
+        case 2: {
+            int boxes = self.aabbModels[modelPointer];
+            for (int i = 0; i < boxes; i++) {
+                int offset = modelPointer + 1 + i * TEX_AABB_SIZE;
+                TexturedAABB box = TexturedAABB_new(self.aabbModels, offset);
+                if (box.mn != 0) return box.mn;
+                if (box.me != 0) return box.me;
+                if (box.ms != 0) return box.ms;
+                if (box.mw != 0) return box.mw;
+                if (box.mt != 0) return box.mt;
+                if (box.mb != 0) return box.mb;
+            }
+            return 0;
+        }
+        case 3: {
+            int quads = self.quadModels[modelPointer];
+            if (quads > 0) {
+                int offset = modelPointer + 1;
+                Quad q = Quad_new(self.quadModels, offset);
+                return q.material;
+            }
+            return 0;
+        }
+    }
+}
+
+int BlockPalette_emitterFaceCount(BlockPalette self, int block) {
+    if (block == 0x7FFFFFFE || block == 0) {
+        return 0;
+    }
+
+    int modelType = self.blockPalette[block + 0];
+    int modelPointer = self.blockPalette[block + 1];
+
+    switch (modelType) {
+        default:
+        case 0:
+        case 4:
+            return 0;
+        case 1:
+            return 6;
+        case 2: {
+            int count = 0;
+            int boxes = self.aabbModels[modelPointer];
+            for (int i = 0; i < boxes; i++) {
+                int offset = modelPointer + 1 + i * TEX_AABB_SIZE;
+                TexturedAABB box = TexturedAABB_new(self.aabbModels, offset);
+                if (((box.flags >> 0) & 0b1000) == 0) count++;
+                if (((box.flags >> 4) & 0b1000) == 0) count++;
+                if (((box.flags >> 8) & 0b1000) == 0) count++;
+                if (((box.flags >> 12) & 0b1000) == 0) count++;
+                if (((box.flags >> 16) & 0b1000) == 0) count++;
+                if (((box.flags >> 20) & 0b1000) == 0) count++;
+            }
+            return count;
+        }
+        case 3:
+            return self.quadModels[modelPointer];
+    }
+}
+
+void sample_unit_block_face(int faceIndex, float2 uv, float3* outPos, float3* outNormal, float* outArea) {
+    switch (faceIndex) {
+        case 0:
+            *outPos = (float3)(uv.x, uv.y, 0.0f);
+            *outNormal = (float3)(0.0f, 0.0f, -1.0f);
+            break;
+        case 1:
+            *outPos = (float3)(1.0f, uv.y, uv.x);
+            *outNormal = (float3)(1.0f, 0.0f, 0.0f);
+            break;
+        case 2:
+            *outPos = (float3)(1.0f - uv.x, uv.y, 1.0f);
+            *outNormal = (float3)(0.0f, 0.0f, 1.0f);
+            break;
+        case 3:
+            *outPos = (float3)(0.0f, uv.y, 1.0f - uv.x);
+            *outNormal = (float3)(-1.0f, 0.0f, 0.0f);
+            break;
+        case 4:
+            *outPos = (float3)(uv.x, 1.0f, 1.0f - uv.y);
+            *outNormal = (float3)(0.0f, 1.0f, 0.0f);
+            break;
+        default:
+            *outPos = (float3)(uv.x, 0.0f, uv.y);
+            *outNormal = (float3)(0.0f, -1.0f, 0.0f);
+            break;
+    }
+    *outArea = 1.0f;
+}
+
+bool sample_textured_aabb_face(TexturedAABB box, int faceIndex, float2 uv, float3* outPos, float3* outNormal, float* outArea) {
+    float dx = box.box.xmax - box.box.xmin;
+    float dy = box.box.ymax - box.box.ymin;
+    float dz = box.box.zmax - box.box.zmin;
+    switch (faceIndex) {
+        case 0:
+            if ((box.flags & 0b1000) != 0) return false;
+            *outPos = (float3)(box.box.xmin + uv.x * dx, box.box.ymin + uv.y * dy, box.box.zmin);
+            *outNormal = (float3)(0.0f, 0.0f, -1.0f);
+            *outArea = dx * dy;
+            return true;
+        case 1:
+            if (((box.flags >> 4) & 0b1000) != 0) return false;
+            *outPos = (float3)(box.box.xmax, box.box.ymin + uv.y * dy, box.box.zmin + uv.x * dz);
+            *outNormal = (float3)(1.0f, 0.0f, 0.0f);
+            *outArea = dz * dy;
+            return true;
+        case 2:
+            if (((box.flags >> 8) & 0b1000) != 0) return false;
+            *outPos = (float3)(box.box.xmax - uv.x * dx, box.box.ymin + uv.y * dy, box.box.zmax);
+            *outNormal = (float3)(0.0f, 0.0f, 1.0f);
+            *outArea = dx * dy;
+            return true;
+        case 3:
+            if (((box.flags >> 12) & 0b1000) != 0) return false;
+            *outPos = (float3)(box.box.xmin, box.box.ymin + uv.y * dy, box.box.zmax - uv.x * dz);
+            *outNormal = (float3)(-1.0f, 0.0f, 0.0f);
+            *outArea = dz * dy;
+            return true;
+        case 4:
+            if (((box.flags >> 16) & 0b1000) != 0) return false;
+            *outPos = (float3)(box.box.xmin + uv.x * dx, box.box.ymax, box.box.zmax - uv.y * dz);
+            *outNormal = (float3)(0.0f, 1.0f, 0.0f);
+            *outArea = dx * dz;
+            return true;
+        default:
+            if (((box.flags >> 20) & 0b1000) != 0) return false;
+            *outPos = (float3)(box.box.xmin + uv.x * dx, box.box.ymin, box.box.zmin + uv.y * dz);
+            *outNormal = (float3)(0.0f, -1.0f, 0.0f);
+            *outArea = dx * dz;
+            return true;
+    }
+}
+
+bool BlockPalette_sampleEmitterFace(BlockPalette self, int block, int faceIndex, float2 uv, float3* outPos, float3* outNormal, float* outArea) {
+    if (block == 0x7FFFFFFE || block == 0) {
+        return false;
+    }
+
+    int modelType = self.blockPalette[block + 0];
+    int modelPointer = self.blockPalette[block + 1];
+
+    switch (modelType) {
+        default:
+        case 0:
+        case 4:
+            return false;
+        case 1:
+            if (faceIndex < 0 || faceIndex >= 6) return false;
+            sample_unit_block_face(faceIndex, uv, outPos, outNormal, outArea);
+            return true;
+        case 2: {
+            int boxes = self.aabbModels[modelPointer];
+            for (int i = 0; i < boxes; i++) {
+                int offset = modelPointer + 1 + i * TEX_AABB_SIZE;
+                TexturedAABB box = TexturedAABB_new(self.aabbModels, offset);
+                for (int face = 0; face < 6; face++) {
+                    float3 pos;
+                    float3 normal;
+                    float area;
+                    if (!sample_textured_aabb_face(box, face, uv, &pos, &normal, &area)) {
+                        continue;
+                    }
+                    if (faceIndex == 0) {
+                        *outPos = pos;
+                        *outNormal = normal;
+                        *outArea = area;
+                        return true;
+                    }
+                    faceIndex--;
+                }
+            }
+            return false;
+        }
+        case 3: {
+            int quads = self.quadModels[modelPointer];
+            if (faceIndex < 0 || faceIndex >= quads) {
+                return false;
+            }
+            int offset = modelPointer + 1 + faceIndex * QUAD_SIZE;
+            Quad q = Quad_new(self.quadModels, offset);
+            *outPos = q.origin + uv.x * q.xv + uv.y * q.yv;
+            *outNormal = normalize(cross(q.xv, q.yv));
+            *outArea = length(cross(q.xv, q.yv));
+            return true;
+        }
+    }
+}
+
 bool BlockPalette_intersectNormalizedBlock(BlockPalette self, image2d_array_t atlas, MaterialPalette materialPalette, int block, int3 blockPosition, Ray ray, IntersectionRecord* record, MaterialSample* sample) {
     // ANY_TYPE. Should not be intersected.
     if (block == 0x7FFFFFFE) {
@@ -49,6 +261,7 @@ bool BlockPalette_intersectNormalizedBlock(BlockPalette self, image2d_array_t at
         }
         case 1: {
             AABB box = AABB_new(0, 1, 0, 1, 0, 1);
+            bool insideBlock = AABB_inside(box, tempRay.origin);
             hit = AABB_full_intersect(box, tempRay, &tempRecord);
             tempRecord.material = modelPointer;
             if (hit) {
@@ -60,8 +273,16 @@ bool BlockPalette_intersectNormalizedBlock(BlockPalette self, image2d_array_t at
                 }
 
                 Material material = Material_get(materialPalette, tempRecord.material);
-                hit = Material_sample(material, atlas, tempRecord.texCoord, sample);
+                hit = Material_sample_mode(material, atlas, tempRecord.texCoord, true, sample);
                 if (hit) {
+                    if (insideBlock && Material_isRefractive(material) && !Material_isOpaque(material) &&
+                            dot(tempRecord.normal, tempRay.direction) > 0.0f &&
+                            sample->color.w <= EPS) {
+                        // Exiting clear glass should keep the medium boundary for refraction,
+                        // but fully transparent texels should not render a visible back-face frame.
+                        sample->color = (float4)(1.0f, 1.0f, 1.0f, 0.0f);
+                    }
+                    tempRecord.block = block;
                     *record =tempRecord;
                     return true;
                 } else {
@@ -77,6 +298,9 @@ bool BlockPalette_intersectNormalizedBlock(BlockPalette self, image2d_array_t at
                 TexturedAABB box = TexturedAABB_new(self.aabbModels, offset);
                 hit |= TexturedAABB_intersect(box, atlas, materialPalette, tempRay, record, sample);
             }
+            if (hit) {
+                record->block = block;
+            }
             return hit;
         }
         case 3: {
@@ -86,23 +310,14 @@ bool BlockPalette_intersectNormalizedBlock(BlockPalette self, image2d_array_t at
                 Quad q = Quad_new(self.quadModels, offset);
                 hit |= Quad_intersect(q, atlas, materialPalette, tempRay, record, sample);
             }
+            if (hit) {
+                record->block = block;
+            }
             return hit;
         }
         case 4: {
-            // Light block
-            if (ray.flags & RAY_PREVIEW) {
-                AABB box = AABB_new(0, 1, 0, 1, 0, 1);
-                hit = AABB_full_intersect(box, tempRay, &tempRecord);
-                tempRecord.material = modelPointer;
-            } else if (ray.flags & RAY_INDIRECT) {
-                AABB box = AABB_new(0.125, 0.875, 0.125, 0.875, 0.125, 0.875);
-                hit = AABB_full_intersect(box, tempRay, &tempRecord);
-                tempRecord.material = modelPointer;
-            } else {
-                return false;
-            }
-            *record = tempRecord;
-            return hit;
+            // Temporarily ignore invisible light blocks entirely.
+            return false;
         }
     }
 }

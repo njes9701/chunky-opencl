@@ -10,8 +10,10 @@ import se.llbit.chunky.renderer.DefaultRenderManager;
 import se.llbit.chunky.renderer.Renderer;
 import se.llbit.chunky.renderer.ResetReason;
 import se.llbit.chunky.renderer.scene.Scene;
+import se.llbit.util.TaskTracker;
 import se.llbit.util.Mutable;
 
+import java.util.Arrays;
 import java.util.function.BooleanSupplier;
 
 import static org.jocl.CL.*;
@@ -119,6 +121,14 @@ public class OpenClPreviewRenderer implements Renderer {
 
     @Override
     public void sceneReset(DefaultRenderManager manager, ResetReason reason, int resetCount) {
+        synchronized (manager.bufferedScene) {
+            Arrays.fill(manager.bufferedScene.getSampleBuffer(), 0.0);
+            Arrays.fill(manager.bufferedScene.getBackBuffer().data, 0);
+            manager.bufferedScene.spp = 0;
+            manager.bufferedScene.renderTime = 0;
+            manager.bufferedScene.postProcessFrame(TaskTracker.Task.NONE);
+        }
+        manager.redrawScreen();
         ContextManager.get().sceneLoader.load(resetCount, reason, manager.bufferedScene);
     }
 }

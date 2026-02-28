@@ -17,9 +17,12 @@ import dev.thatredox.chunkynative.opencl.renderer.export.ClTextureLoader;
 import dev.thatredox.chunkynative.opencl.renderer.scene.ClSky;
 import dev.thatredox.chunkynative.opencl.util.ClIntBuffer;
 import dev.thatredox.chunkynative.util.FunctionCache;
+import dev.thatredox.chunkynative.util.Reflection;
 import se.llbit.chunky.renderer.ResetReason;
 import se.llbit.chunky.renderer.scene.Scene;
+import se.llbit.math.Grid;
 
+import java.util.List;
 import java.util.Arrays;
 
 public class ClSceneLoader extends AbstractSceneLoader {
@@ -31,6 +34,10 @@ public class ClSceneLoader extends AbstractSceneLoader {
 
     protected ClIntBuffer octreeData = null;
     protected ClIntBuffer octreeDepth = null;
+    protected ClIntBuffer emitterGridMeta = null;
+    protected ClIntBuffer emitterGridCells = null;
+    protected ClIntBuffer emitterGridIndexes = null;
+    protected ClIntBuffer emitterGridEmitters = null;
     private final ClContext context;
 
     public ClSceneLoader(ClContext context) {
@@ -56,8 +63,58 @@ public class ClSceneLoader extends AbstractSceneLoader {
                 skyState = newSky;
                 packedSun = new PackedSun(scene.sun(), getTexturePalette());
             }
+            loadEmitterGrid(scene);
         }
         return loadSuccess;
+    }
+
+    private void loadEmitterGrid(Scene scene) {
+        if (emitterGridMeta != null) emitterGridMeta.close();
+        if (emitterGridCells != null) emitterGridCells.close();
+        if (emitterGridIndexes != null) emitterGridIndexes.close();
+        if (emitterGridEmitters != null) emitterGridEmitters.close();
+
+        Grid grid = scene.getEmitterGrid();
+        if (grid == null || blockMapping == null) {
+            emitterGridMeta = new ClIntBuffer(new int[] {0, 0, 0, 0, 0, 0, 0}, context);
+            emitterGridCells = new ClIntBuffer(new int[] {0, 0}, context);
+            emitterGridIndexes = new ClIntBuffer(new int[] {0}, context);
+            emitterGridEmitters = new ClIntBuffer(new int[] {0, 0, 0, 0}, context);
+            return;
+        }
+
+        int cellSize = Reflection.getFieldValue(grid, "cellSize", Integer.class);
+        int offsetX = Reflection.getFieldValue(grid, "offsetX", Integer.class);
+        int sizeX = Reflection.getFieldValue(grid, "sizeX", Integer.class);
+        int offsetY = Reflection.getFieldValue(grid, "offsetY", Integer.class);
+        int sizeY = Reflection.getFieldValue(grid, "sizeY", Integer.class);
+        int offsetZ = Reflection.getFieldValue(grid, "offsetZ", Integer.class);
+        int sizeZ = Reflection.getFieldValue(grid, "sizeZ", Integer.class);
+        int[] constructedGrid = Reflection.getFieldValue(grid, "constructedGrid", int[].class);
+        int[] positionIndexes = Reflection.getFieldValue(grid, "positionIndexes", int[].class);
+        @SuppressWarnings("unchecked")
+        List<Grid.EmitterPosition> positions = Reflection.getFieldValue(grid, "emitterPositions", List.class);
+
+        int[] emitters = new int[Math.max(positions.size(), 1) * 4];
+        for (int i = 0; i < positions.size(); i++) {
+            Grid.EmitterPosition pos = positions.get(i);
+            int paletteIndex = scene.getPalette().getPalette().indexOf(pos.block);
+            int packedBlock = paletteIndex >= 0 && paletteIndex < blockMapping.length ? blockMapping[paletteIndex] : 0;
+            emitters[i * 4] = pos.x;
+            emitters[i * 4 + 1] = pos.y;
+            emitters[i * 4 + 2] = pos.z;
+            emitters[i * 4 + 3] = packedBlock;
+        }
+
+        emitterGridMeta = new ClIntBuffer(new int[] {
+                cellSize,
+                offsetX, sizeX,
+                offsetY, sizeY,
+                offsetZ, sizeZ
+        }, context);
+        emitterGridCells = new ClIntBuffer(constructedGrid == null || constructedGrid.length == 0 ? new int[] {0, 0} : constructedGrid, context);
+        emitterGridIndexes = new ClIntBuffer(positionIndexes == null || positionIndexes.length == 0 ? new int[] {0} : positionIndexes, context);
+        emitterGridEmitters = new ClIntBuffer(emitters, context);
     }
 
     @Override
@@ -159,5 +216,25 @@ public class ClSceneLoader extends AbstractSceneLoader {
 
     public ClIntBuffer getSun() {
         return clPackedSun.apply(packedSun);
+    }
+
+    public ClIntBuffer getEmitterGridMeta() {
+        assert emitterGridMeta != null;
+        return emitterGridMeta;
+    }
+
+    public ClIntBuffer getEmitterGridCells() {
+        assert emitterGridCells != null;
+        return emitterGridCells;
+    }
+
+    public ClIntBuffer getEmitterGridIndexes() {
+        assert emitterGridIndexes != null;
+        return emitterGridIndexes;
+    }
+
+    public ClIntBuffer getEmitterGridEmitters() {
+        assert emitterGridEmitters != null;
+        return emitterGridEmitters;
     }
 }

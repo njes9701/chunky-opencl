@@ -86,9 +86,21 @@ bool Octree_octreeIntersect(Octree self, image2d_array_t atlas, BlockPalette pal
         lv = bp >> level;
 
         // Get block data if there is an intersection
-        if (data != ray.material) {
-            if (BlockPalette_intersectNormalizedBlock(palette, atlas, materialPalette, data, bp, ray, record, sample)) {
-                return true;
+        if (data != 0) {
+            IntersectionRecord tempRecord = *record;
+            MaterialSample tempSample;
+            if (BlockPalette_intersectNormalizedBlock(palette, atlas, materialPalette, data, bp, ray, &tempRecord, &tempSample)) {
+                if (ray.currentMaterial != 0 && tempRecord.material == ray.currentMaterial) {
+                    distMarch += tempRecord.distance + OFFSET;
+                    continue;
+                }
+                if (data != ray.currentBlock || tempRecord.distance > OFFSET * 4.0f) {
+                    *record = tempRecord;
+                    *sample = tempSample;
+                    return true;
+                }
+                distMarch += tempRecord.distance + OFFSET;
+                continue;
             }
         }
 

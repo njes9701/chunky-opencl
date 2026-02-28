@@ -15,6 +15,7 @@ public class PackedQuad implements Packer {
     public final int flags;
 
     public PackedQuad(Quad quad, Texture texture, Tint tint, Material material,
+                      boolean hitTransparent,
                       AbstractTextureLoader texturePalette,
                       ResourcePalette<PackedMaterial> materialPalette) {
         this.vectors[0] = (float) quad.o.x;
@@ -35,6 +36,9 @@ public class PackedQuad implements Packer {
         if (quad.doubleSided) {
             flags |= 1;
         }
+        if (hitTransparent) {
+            flags |= 1 << 1;
+        }
         this.flags = flags;
     }
 
@@ -54,7 +58,7 @@ public class PackedQuad implements Packer {
      * 11: UV Z
      * 12: UV W
      * 13: Material reference
-     * 14: Flags bitfield. 1 if doublesided.
+     * 14: Flags bitfield. Bit 0 if doublesided. Bit 1 if transparent texels still count as a hit.
      */
     @Override
     public IntArrayList pack() {

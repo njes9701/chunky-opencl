@@ -37,6 +37,7 @@ public abstract class AbstractSceneLoader {
     protected ResourcePalette<PackedTriangleModel> trigPalette = null;
     protected int[] worldBvh = null;
     protected int[] actorBvh = null;
+    protected int[] blockMapping = null;
     protected PackedSun packedSun = null;
 
     public boolean ensureLoad(Scene scene) {
@@ -74,6 +75,7 @@ public abstract class AbstractSceneLoader {
         ResourcePalette<PackedAabbModel> aabbPalette = this.createAabbModelPalette();
         ResourcePalette<PackedQuadModel> quadPalette = this.createQuadModelPalette();
         ResourcePalette<PackedTriangleModel> trigPalette = this.createTriangleModelPalette();
+        materialPalette.put(PackedMaterial.air());
 
         SceneEntities entities = Reflection.getFieldValue(scene, "entities", SceneEntities.class);
         BVH worldBvh = Reflection.getFieldValue(entities, "bvh", BVH.class);
@@ -142,6 +144,7 @@ public abstract class AbstractSceneLoader {
             this.trigPalette = trigPalette;
             this.worldBvh = packedWorldBvh;
             this.actorBvh = packedActorBvh;
+            this.blockMapping = blockMapping;
         }
 
         // Need to reload octree

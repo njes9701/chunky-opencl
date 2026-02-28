@@ -8,6 +8,7 @@ import dev.thatredox.chunkynative.common.export.primitives.PackedQuad;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import se.llbit.chunky.model.QuadModel;
 import se.llbit.chunky.model.Tint;
+import se.llbit.chunky.block.minecraft.GlassPane;
 import se.llbit.chunky.resources.Texture;
 import se.llbit.chunky.world.Material;
 import se.llbit.math.Quad;
@@ -18,6 +19,7 @@ public class PackedQuadModel implements Packer {
     public PackedQuadModel(QuadModel model, Material material,
                            AbstractTextureLoader texturePalette,
                            ResourcePalette<PackedMaterial> materialPalette) {
+        boolean hitTransparent = material instanceof GlassPane;
         quads = new PackedQuad[model.getQuads().length];
         for (int i = 0; i < quads.length; i++) {
             Quad quad = model.getQuads()[i];
@@ -27,7 +29,7 @@ public class PackedQuadModel implements Packer {
                 tint = model.getTints()[i];
             }
 
-            quads[i] = new PackedQuad(quad, tex, tint, material, texturePalette, materialPalette);
+            quads[i] = new PackedQuad(quad, tex, tint, material, hitTransparent, texturePalette, materialPalette);
         }
     }
 

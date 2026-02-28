@@ -7,6 +7,7 @@ import dev.thatredox.chunkynative.opencl.renderer.ClSceneLoader;
 import dev.thatredox.chunkynative.opencl.renderer.scene.*;
 import dev.thatredox.chunkynative.opencl.util.ClIntBuffer;
 import dev.thatredox.chunkynative.opencl.util.ClMemory;
+import dev.thatredox.chunkynative.util.Reflection;
 import org.jocl.*;
 
 import se.llbit.chunky.main.Chunky;
@@ -77,13 +78,24 @@ public class OpenClPathTracingRenderer implements Renderer {
                 scene.canvasConfig.getCropX(), scene.canvasConfig.getCropY()
         }, context.context);
         ClIntBuffer clRayDepth = new ClIntBuffer(scene.getRayDepth(), context.context);
+        ClMemory sceneSettings = new ClMemory(
+                clCreateBuffer(context.context.context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                        (long) Sizeof.cl_float * 5,
+                        Pointer.to(new float[] {
+                                ((Double) Reflection.getFieldValue(scene, "transmissivityCap", Double.class)).floatValue(),
+                                ((Boolean) Reflection.getFieldValue(scene, "fancierTranslucency", Boolean.class)) ? 1.0f : 0.0f,
+                                scene.getSunSamplingStrategy().doSunSampling() ? 1.0f : 0.0f,
+                                scene.getSunSamplingStrategy().isSunLuminosity() ? 1.0f : 0.0f,
+                                scene.getSunSamplingStrategy().isStrictDirectLight() ? 1.0f : 0.0f
+                        }), null));
 
         try (ClCamera ignored1 = camera;
              ClMemory ignored2 = buffer;
              ClMemory ignored3 = randomSeed;
              ClMemory ignored4 = bufferSpp;
              ClIntBuffer ignored5 = clCanvasConfig;
-             ClIntBuffer ignored6 = clRayDepth) {
+             ClIntBuffer ignored6 = clRayDepth;
+             ClMemory ignored7 = sceneSettings) {
 
             // Generate initial camera rays
             camera.generate(renderLock, true);
@@ -126,6 +138,10 @@ public class OpenClPathTracingRenderer implements Renderer {
 
                 clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getTexturePalette().getAtlas()));
                 clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getMaterialPalette().get()));
+                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getEmitterGridMeta().get()));
+                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getEmitterGridCells().get()));
+                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getEmitterGridIndexes().get()));
+                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getEmitterGridEmitters().get()));
 
                 clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getSky().skyTexture.get()));
                 clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getSky().skyIntensity.get()));
@@ -135,6 +151,11 @@ public class OpenClPathTracingRenderer implements Renderer {
                 clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(bufferSpp.get()));
                 clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(clCanvasConfig.get()));
                 clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(clRayDepth.get()));
+                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneSettings.get()));
+                clSetKernelArg(kernel, argIndex++, Sizeof.cl_int, Pointer.to(new int[] { scene.getEmittersEnabled() ? 1 : 0 }));
+                clSetKernelArg(kernel, argIndex++, Sizeof.cl_float, Pointer.to(new float[] { (float) scene.getEmitterIntensity() }));
+                clSetKernelArg(kernel, argIndex++, Sizeof.cl_int, Pointer.to(new int[] { scene.getEmitterSamplingStrategy().ordinal() }));
+                clSetKernelArg(kernel, argIndex++, Sizeof.cl_int, Pointer.to(new int[] { scene.isPreventNormalEmitterWithSampling() ? 1 : 0 }));
                 clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(buffer.get()));
                 clEnqueueNDRangeKernel(context.context.queue, kernel, 1, null,
                         new long[]{passBuffer.length / 3}, null, 0, null,
@@ -202,6 +223,14 @@ public class OpenClPathTracingRenderer implements Renderer {
 
     @Override
     public void sceneReset(DefaultRenderManager manager, ResetReason reason, int resetCount) {
+        synchronized (manager.bufferedScene) {
+            Arrays.fill(manager.bufferedScene.getSampleBuffer(), 0.0);
+            Arrays.fill(manager.bufferedScene.getBackBuffer().data, 0);
+            manager.bufferedScene.spp = 0;
+            manager.bufferedScene.renderTime = 0;
+            manager.bufferedScene.postProcessFrame(TaskTracker.Task.NONE);
+        }
+        manager.redrawScreen();
         ContextManager.get().sceneLoader.load(resetCount, reason, manager.bufferedScene);
     }
 }

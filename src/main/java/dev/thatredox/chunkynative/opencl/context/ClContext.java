@@ -1,7 +1,7 @@
 package dev.thatredox.chunkynative.opencl.context;
 
-import jdk.jpackage.internal.Log;
 import org.jocl.*;
+import se.llbit.log.Log;
 
 import java.util.Arrays;
 import java.util.HashMap;

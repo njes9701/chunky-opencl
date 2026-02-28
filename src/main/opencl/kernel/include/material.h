@@ -27,6 +27,7 @@ typedef struct {
     unsigned int color;
     unsigned int normal_emittance;
     unsigned int specular_metalness_roughness;
+    unsigned int ior;
 } Material;
 
 Material Material_get(MaterialPalette self, int material) {
@@ -37,6 +38,7 @@ Material Material_get(MaterialPalette self, int material) {
     m.color = self.palette[material + 3];
     m.normal_emittance = self.palette[material + 4];
     m.specular_metalness_roughness = self.palette[material + 5];
+    m.ior = self.palette[material + 6];
     return m;
 }
 
@@ -48,10 +50,16 @@ typedef struct {
     float roughness;
 } MaterialSample;
 
+bool Material_sample_mode(Material self, image2d_array_t atlas, float2 uv, bool allowTransparentHit, MaterialSample* sample);
+
 bool Material_sample(Material self, image2d_array_t atlas, float2 uv, MaterialSample* sample) {
+    return Material_sample_mode(self, atlas, uv, false, sample);
+}
+
+bool Material_sample_mode(Material self, image2d_array_t atlas, float2 uv, bool allowTransparentHit, MaterialSample* sample) {
     // Color
     float4 color;
-    if (self.flags & 0b100)
+    if (self.flags & 0b00001)
         color = Atlas_read_uv(uv.x, uv.y, self.color, self.textureSize, atlas);
     else
         color = colorFromArgb(self.color);
@@ -62,6 +70,8 @@ bool Material_sample(Material self, image2d_array_t atlas, float2 uv, MaterialSa
         sample->color.w = 1.0;
     } else if (color.w > EPS) {
         sample->color = color;
+    } else if (allowTransparentHit) {
+        sample->color = (float4)(1.0f, 1.0f, 1.0f, 0.0f);
     } else {
         return false;
     }
@@ -85,14 +95,21 @@ bool Material_sample(Material self, image2d_array_t atlas, float2 uv, MaterialSa
             break;
     }
 
+    if ((self.flags & 0b01000) && (self.flags & 0b10000) == 0 &&
+            sample->color.w > EPS && sample->color.w < 0.999f) {
+        // Keep stained/partial glass surface details readable without affecting fully
+        // transparent texels that should still disappear on the back face.
+        sample->color.w = fmin(1.0f, sample->color.w + 0.15f);
+    }
+
     // (Normal) emittance
-    if (self.flags & 0b010)
+    if (self.flags & 0b00010)
         sample->emittance = Atlas_read_uv(uv.x, uv.y, self.normal_emittance, self.textureSize, atlas).w;
     else
         sample->emittance = (self.normal_emittance & 0xFF) / 255.0;
 
     // specular, metalness, roughness
-    if (self.flags & 0b001) {
+    if (self.flags & 0b00100) {
         float3 smr = Atlas_read_uv(uv.x, uv.y, self.specular_metalness_roughness, self.textureSize, atlas).xyz;
         sample->specular = smr.x;
         sample->metalness = smr.y;
@@ -104,6 +121,18 @@ bool Material_sample(Material self, image2d_array_t atlas, float2 uv, MaterialSa
     }
     
     return true;
+}
+
+bool Material_isRefractive(Material self) {
+    return (self.flags & 0b01000) != 0;
+}
+
+bool Material_isOpaque(Material self) {
+    return (self.flags & 0b10000) != 0;
+}
+
+float Material_ior(Material self) {
+    return as_float(self.ior);
 }
 
 float3 _Material_diffuseReflection(IntersectionRecord record, Random random) {
@@ -166,6 +195,48 @@ float3 _Material_specularReflection(IntersectionRecord record, MaterialSample sa
     }
 
     return normalize(direction);
+}
+
+float3 Material_refractDirection(IntersectionRecord record, Ray ray, float n1, float n2) {
+    float n1n2 = n1 / n2;
+    float cosTheta = -dot(record.normal, ray.direction);
+    float t2 = sqrt(fmax(0.0f, 1 - n1n2 * n1n2 * (1 - cosTheta * cosTheta)));
+    float3 direction;
+
+    if (cosTheta > 0) {
+        direction = n1n2 * ray.direction + (n1n2 * cosTheta - t2) * record.normal;
+    } else {
+        direction = n1n2 * ray.direction - (-n1n2 * cosTheta - t2) * record.normal;
+    }
+
+    direction = normalize(direction);
+    if (signbit(dot(record.normal, direction)) != signbit(dot(record.normal, ray.direction))) {
+        float factor = copysign(dot(record.normal, ray.direction), -EPS - dot(record.normal, direction));
+        direction += factor * record.normal;
+        direction = normalize(direction);
+    }
+    return direction;
+}
+
+float3 Material_translucentTransmission(MaterialSample sample, float absorption, float transmissivityCap, bool fancierTranslucency) {
+    if (!fancierTranslucency) {
+        float3 rgbTrans = (float3) (1 - absorption);
+        return rgbTrans + absorption * sample.color.xyz;
+    }
+
+    float colorTrans = (sample.color.x + sample.color.y + sample.color.z) / 3.0f;
+    float shouldTrans = 1.0f - absorption;
+    float3 rgbTrans = (float3) (shouldTrans);
+
+    if (colorTrans > 0) {
+        rgbTrans = sample.color.xyz * (shouldTrans / colorTrans);
+    }
+
+    float maxTrans = fmax(rgbTrans.x, fmax(rgbTrans.y, rgbTrans.z));
+    if (maxTrans > transmissivityCap && maxTrans > 0) {
+        rgbTrans *= transmissivityCap / maxTrans;
+    }
+    return rgbTrans;
 }
 
 typedef struct {

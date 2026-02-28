@@ -9,13 +9,17 @@
 typedef struct {
     float3 origin;
     float3 direction;
-    int material;
+    int prevMaterial;
+    int currentMaterial;
+    int prevBlock;
+    int currentBlock;
     int flags;
 } Ray;
 
 typedef struct {
     float distance;
     int material;
+    int block;
 
     float3 normal;
     float2 texCoord;
@@ -25,6 +29,7 @@ IntersectionRecord IntersectionRecord_new() {
     IntersectionRecord record;
     record.distance = HUGE_VALF;
     record.material = 0;
+    record.block = 0;
     record.normal = (float3) (0, 1, 0);
     return record;
 }

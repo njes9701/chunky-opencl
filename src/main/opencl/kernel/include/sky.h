@@ -94,11 +94,14 @@ bool Sun_sampleDirection(Sun self, Ray* ray, Random random) {
     float3 v = self.sv * (sin(phi) * sin_a);
     float3 w = self.sw * cos_a;
 
-    ray->direction = u * v;
-    ray->direction += w;
+    ray->direction = u + v + w;
     ray->direction = normalize(ray->direction);
 
     return true;
+}
+
+float3 Sun_emittance(Sun self) {
+    return self.color.xyz * pow(self.intensity, 2.2f);
 }
 
 const sampler_t skySampler = CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;

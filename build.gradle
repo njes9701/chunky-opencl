@@ -10,8 +10,8 @@ repositories {
     }
 }
 
-sourceCompatibility = '1.8'
-targetCompatibility = '1.8'
+sourceCompatibility = '17'
+targetCompatibility = '17'
 
 configurations {
     implementation.extendsFrom(provided)
@@ -19,7 +19,7 @@ configurations {
 }
 
 dependencies {
-    provided 'se.llbit:chunky-core:2.5.0-SNAPSHOT'
+    provided files('chunky-core-2.5.0-SNAPSHOT.446.ga4b37eb.jar')
     provided 'org.apache.commons:commons-math3:3.2'
     provided 'it.unimi.dsi:fastutil:8.4.4'
     bundled 'org.jocl:jocl:2.0.2'
