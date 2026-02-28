@@ -21,10 +21,10 @@
 - Entity-based emitters such as campfires / candles are not yet fully matched to CPU behavior
 - Some advanced lighting behavior is still experimental
 
-###  Preview
+### Water Preview
 
-![Water Preview 1](@photo)
-![Water Preview 2](@photo)
+![Water Preview 1](photo/ship.png)
+![Water Preview 2](photo/ChunghwaMC%20server.png)
 
 This is a plugin for [Chunky](https://github.com/chunky-dev/chunky) which harnesses the power of the GPU with OpenCL 1.2+ to accelerate rendering.
 
