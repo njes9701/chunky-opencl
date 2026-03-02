@@ -23,6 +23,8 @@ import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 
+import dev.thatredox.chunkynative.opencl.ui.ChunkyClTab;
+
 public class OpenClPathTracingRenderer implements Renderer {
 
     private BooleanSupplier postRender = () -> true;
@@ -83,14 +85,15 @@ public class OpenClPathTracingRenderer implements Renderer {
             ClIntBuffer clRayDepth = new ClIntBuffer(scene.getRayDepth(), context.context);
             ClMemory sceneSettings = new ClMemory(
                     clCreateBuffer(context.context.context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                            (long) Sizeof.cl_float * 6,
+                            (long) Sizeof.cl_float * 7,
                             Pointer.to(new float[] {
                                     ((Double) Reflection.getFieldValue(scene, "transmissivityCap", Double.class)).floatValue(),
                                     ((Boolean) Reflection.getFieldValue(scene, "fancierTranslucency", Boolean.class)) ? 1.0f : 0.0f,
                                     scene.getSunSamplingStrategy().doSunSampling() ? 1.0f : 0.0f,
                                     scene.getSunSamplingStrategy().isSunLuminosity() ? 1.0f : 0.0f,
                                     scene.getSunSamplingStrategy().isStrictDirectLight() ? 1.0f : 0.0f,
-                                    50.0f // 俄羅斯輪盤 (Russian Roulette) 閾值: 0~100
+                                    ChunkyClTab.russianRouletteThreshold,
+                                    (float)ChunkyClTab.virtualDepth
                             }), null));
 
             try (ClCamera ignored1 = camera;

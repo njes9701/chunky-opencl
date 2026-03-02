@@ -364,10 +364,12 @@ __kernel void render(
 ) {
     int gid = get_global_id(0);
 
+    float virtualDepth = sceneSettings[6];
+
     Scene scene;
     scene.materialPalette = MaterialPalette_new(matPalette);
-    scene.octree = Octree_create(octreeData, *octreeDepth);
-    scene.waterOctree = Octree_create(waterOctreeData, *waterOctreeDepth);
+    scene.octree = Octree_create(octreeData, *octreeDepth, (int)virtualDepth);
+    scene.waterOctree = Octree_create(waterOctreeData, *waterOctreeDepth, (int)virtualDepth);
     scene.worldBvh = Bvh_new(worldBvhData, bvhTrigs, &scene.materialPalette);
     scene.actorBvh = Bvh_new(actorBvhData, bvhTrigs, &scene.materialPalette);
     scene.blockPalette = BlockPalette_new(bPalette, quadModels, aabbModels, waterModels, &scene.materialPalette);
@@ -600,8 +602,8 @@ __kernel void preview(
 
     Scene scene;
     scene.materialPalette = MaterialPalette_new(matPalette);
-    scene.octree = Octree_create(octreeData, *octreeDepth);
-    scene.waterOctree = Octree_create(waterOctreeData, *waterOctreeDepth);
+    scene.octree = Octree_create(octreeData, *octreeDepth, 10);
+    scene.waterOctree = Octree_create(waterOctreeData, *waterOctreeDepth, 10);
     scene.worldBvh = Bvh_new(worldBvhData, bvhTrigs, &scene.materialPalette);
     scene.actorBvh = Bvh_new(actorBvhData, bvhTrigs, &scene.materialPalette);
     scene.blockPalette = BlockPalette_new(bPalette, quadModels, aabbModels, waterModels, &scene.materialPalette);

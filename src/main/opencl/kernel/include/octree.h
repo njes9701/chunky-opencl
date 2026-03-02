@@ -22,29 +22,37 @@ typedef struct {
     __global const int* treeData;
     AABB bounds;
     int depth;
+    int virtualDepth;
 } Octree;
 
-Octree Octree_create(__global const int* treeData, int depth) {
+Octree Octree_create(__global const int* treeData, int depth, int virtualDepth) {
     Octree octree;
     octree.treeData = treeData;
     octree.depth = depth;
-    octree.bounds = AABB_new(0, 1<<depth, 0, 1<<depth, 0, 1<<depth);
+    // 使用 virtualDepth 來擴張包圍盒，虛擬深度保證了 GPU 在「空氣」中的跳躍能力
+    octree.virtualDepth = max(depth, virtualDepth);
+    octree.bounds = AABB_new(0, 1<<octree.virtualDepth, 0, 1<<octree.virtualDepth, 0, 1<<octree.virtualDepth);
     return octree;
 }
 
 int Octree_get(Octree* self, int x, int y, int z) {
     int3 bp = (int3) (x, y, z);
 
-    // Check inbounds
-    int3 lv = bp >> self->depth;
-    if ((lv.x != 0) | (lv.y != 0) | (lv.z != 0))
+    // 1. 檢查是否在「虛擬大盒子」內
+    int3 vlv = bp >> self->virtualDepth;
+    if ((vlv.x != 0) | (vlv.y != 0) | (vlv.z != 0))
+        return 0;
+
+    // 2. 如果在虛擬盒子內，但超出了實體數據範圍，直接判定為空氣（瞬移成功）
+    int3 rlv = bp >> self->depth;
+    if ((rlv.x != 0) | (rlv.y != 0) | (rlv.z != 0))
         return 0;
 
     int level = self->depth;
     int data = self->treeData[0];
     while (data > 0) {
         level--;
-        lv = 1 & (bp >> level);
+        int3 lv = 1 & (bp >> level);
         data = self->treeData[data + ((lv.x << 2) | (lv.y << 1) | lv.z)];
     }
     return -data;

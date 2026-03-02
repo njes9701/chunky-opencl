@@ -13,11 +13,18 @@ import javafx.util.Duration;
 import se.llbit.chunky.renderer.scene.Scene;
 import se.llbit.chunky.ui.render.RenderControlsTab;
 
+import javafx.scene.control.Slider;
+import javafx.scene.layout.HBox;
+
 public class ChunkyClTab implements RenderControlsTab {
     protected final VBox box;
     private Scene scene;
     private final Label renderTimeLabel;
     private final Timeline renderTimeTicker;
+
+    // 靜態變數供渲染器存取
+    public static float russianRouletteThreshold = 50.0f;
+    public static int virtualDepth = 10;
 
     public ChunkyClTab(Scene scene) {
         this.scene = scene;
@@ -28,6 +35,32 @@ public class ChunkyClTab implements RenderControlsTab {
         renderTimeLabel = new Label();
         updateRenderTimeLabel();
         box.getChildren().add(renderTimeLabel);
+
+        // Russian Roulette UI
+        Label rrLabel = new Label("Russian Roulette Threshold: 50%");
+        Slider rrSlider = new Slider(0, 100, 50);
+        rrSlider.setShowTickLabels(true);
+        rrSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            russianRouletteThreshold = newVal.floatValue();
+            rrLabel.setText(String.format("Russian Roulette Threshold: %d%%", (int)russianRouletteThreshold));
+            scene.softRefresh();
+        });
+        box.getChildren().addAll(rrLabel, rrSlider);
+
+        // Virtual Depth UI
+        Label vdLabel = new Label("Virtual Depth: 10 (1024 Blocks)");
+        Slider vdSlider = new Slider(7, 16, 10);
+        vdSlider.setMajorTickUnit(1);
+        vdSlider.setMinorTickCount(0);
+        vdSlider.setSnapToTicks(true);
+        vdSlider.setShowTickLabels(true);
+        vdSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            virtualDepth = newVal.intValue();
+            int blocks = 1 << virtualDepth;
+            vdLabel.setText(String.format("Virtual Depth: %d (%d Blocks)", virtualDepth, blocks));
+            scene.softRefresh();
+        });
+        box.getChildren().addAll(vdLabel, vdSlider);
 
         Button deviceSelectorButton = new Button("Select OpenCL Device");
         deviceSelectorButton.setOnMouseClicked(event -> {
