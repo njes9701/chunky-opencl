@@ -24,7 +24,7 @@ public class ChunkyClTab implements RenderControlsTab {
 
     // 靜態變數供渲染器存取
     public static float russianRouletteThreshold = 50.0f;
-    public static int virtualDepth = 10;
+    public static int virtualDepth = 16;
 
     public ChunkyClTab(Scene scene) {
         this.scene = scene;
@@ -48,8 +48,8 @@ public class ChunkyClTab implements RenderControlsTab {
         box.getChildren().addAll(rrLabel, rrSlider);
 
         // Virtual Depth UI
-        Label vdLabel = new Label("Virtual Depth: 10 (1024 Blocks)");
-        Slider vdSlider = new Slider(7, 16, 10);
+        Label vdLabel = new Label("Virtual Depth: 16 (65536 Blocks)");
+        Slider vdSlider = new Slider(7, 16, 16);
         vdSlider.setMajorTickUnit(1);
         vdSlider.setMinorTickCount(0);
         vdSlider.setSnapToTicks(true);

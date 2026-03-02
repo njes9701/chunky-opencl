@@ -29,21 +29,18 @@ Octree Octree_create(__global const int* treeData, int depth, int virtualDepth) 
     Octree octree;
     octree.treeData = treeData;
     octree.depth = depth;
-    // 使用 virtualDepth 來擴張包圍盒，虛擬深度保證了 GPU 在「空氣」中的跳躍能力
+    // virtualDepth 僅用於計算動態 Offset 以保證大座標下的精度
     octree.virtualDepth = max(depth, virtualDepth);
-    octree.bounds = AABB_new(0, 1<<octree.virtualDepth, 0, 1<<octree.virtualDepth, 0, 1<<octree.virtualDepth);
+    // 重要：碰撞邊界必須使用真實深度 (depth)，
+    // 這樣 AABB_quick_intersect 才能將平行射線正確推送到實體方塊區域，解決 Y-Clip 精度遺失問題。
+    octree.bounds = AABB_new(0, 1<<depth, 0, 1<<depth, 0, 1<<depth);
     return octree;
 }
 
 int Octree_get(Octree* self, int x, int y, int z) {
     int3 bp = (int3) (x, y, z);
 
-    // 1. 檢查是否在「虛擬大盒子」內
-    int3 vlv = bp >> self->virtualDepth;
-    if ((vlv.x != 0) | (vlv.y != 0) | (vlv.z != 0))
-        return 0;
-
-    // 2. 如果在虛擬盒子內，但超出了實體數據範圍，直接判定為空氣（瞬移成功）
+    // 1. 檢查是否在實體數據範圍內 (depth)
     int3 rlv = bp >> self->depth;
     if ((rlv.x != 0) | (rlv.y != 0) | (rlv.z != 0))
         return 0;
@@ -62,7 +59,8 @@ bool Octree_octreeIntersect(Octree self, image2d_array_t atlas, BlockPalette pal
     float distMarch = 0;
 
     float3 invD = 1 / ray.direction;
-    float rayOffset = Ray_dynamicOffset(self.bounds.xmax);
+    // 使用虛擬深度的最大值來計算 Offset，確保在大範圍下不會因為浮點數精度導致射線停滯。
+    float rayOffset = Ray_dynamicOffset((float)(1 << self.virtualDepth));
     float3 offsetD = ray.direction * rayOffset;
 
     int depth = self.depth;
