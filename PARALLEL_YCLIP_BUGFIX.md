@@ -31,6 +31,7 @@ The debugging logs showed that once the Y clip range crossed the problematic thr
 The fix is implemented in:
 
 - [ClCamera.java](E:\chunky%20opencl\chunky-opencl-main\src\main\java\dev\thatredox\chunkynative\opencl\renderer\scene\ClCamera.java)
+- [octree.h](src/main/opencl/kernel/include/octree.h)
 
 For parallel projection only:
 
@@ -40,6 +41,14 @@ For parallel projection only:
 4. Upload that adjusted ray to the GPU.
 
 This keeps the same viewing direction and projection behavior, but avoids tracing from extremely distant origins in GPU `float` space.
+
+Additionally, the OpenCL octree traversal now uses a dynamic per-ray offset instead of a fixed `OFFSET`:
+
+1. Compute the float spacing at the current octree scale (based on `self.bounds.xmax`).
+2. Use `max(OFFSET, spacing * 2)` as the step offset.
+3. Apply that offset when entering the octree and when stepping between nodes.
+
+This prevents the step offset from falling below the float precision gap at large octree sizes, which was a direct cause of sparse traversal.
 
 ## Why This Fix Was Kept
 
@@ -68,3 +77,4 @@ The final plugin jar keeps:
 - the direct dependency on the local Chunky core jar,
 - the OpenCL draw depth fix in `rayTracer.c`,
 - the parallel-ray octree-entry adjustment in `ClCamera.java`.
+- the dynamic ray offset in `octree.h` to avoid precision stalls at larger octree depths.

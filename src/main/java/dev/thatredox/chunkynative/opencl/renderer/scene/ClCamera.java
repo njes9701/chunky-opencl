@@ -55,6 +55,11 @@ public class ClCamera implements AutoCloseable {
                 settings.add((float) camera.getSubjectDistance());
                 settings.add((float) Camera.clampedFovTan(camera.getFov()));
                 break;
+            case PARALLEL:
+                projType = 1;
+                settings.add((float) camera.getFov());
+                settings.add(Reflection.getFieldValue(camera, "worldDiagonalSize", Double.class).floatValue());
+                break;
             default:
                 // We need to pre-generate rays
                 break;

@@ -38,6 +38,9 @@ Ray ray_to_camera(
             case 0:
                 ray = Camera_pinHole(x, y, random, cameraSettings + 12);
                 break;
+            case 1:
+                ray = Camera_parallel(x, y, cameraSettings + 12);
+                break;
         }
 
         ray.direction = normalize((float3) (

@@ -8,6 +8,16 @@
 #include "block.h"
 #include "utils.h"
 
+float Ray_dynamicOffset(float maxCoord) {
+    if (maxCoord <= 0.0f) {
+        return OFFSET;
+    }
+    int exp = ilogb(maxCoord);
+    float spacing = ldexp(1.0f, exp - 23);
+    float dyn = spacing * 2.0f;
+    return dyn < OFFSET ? OFFSET : dyn;
+}
+
 typedef struct {
     __global const int* treeData;
     AABB bounds;
@@ -44,20 +54,21 @@ bool Octree_octreeIntersect(Octree self, image2d_array_t atlas, BlockPalette pal
     float distMarch = 0;
 
     float3 invD = 1 / ray.direction;
-    float3 offsetD = ray.direction * OFFSET;
+    float rayOffset = Ray_dynamicOffset(self.bounds.xmax);
+    float3 offsetD = ray.direction * rayOffset;
 
     int depth = self.depth;
 
     // Check if we are in bounds
-    if (!AABB_inside(self.bounds, ray.origin)) {
-        // Attempt to intersect with the octree
-        float dist = AABB_quick_intersect(self.bounds, ray.origin, invD);
-        if (isnan(dist) || dist < 0) {
-            return false;
-        } else {
-            distMarch += dist + OFFSET;
+        if (!AABB_inside(self.bounds, ray.origin)) {
+            // Attempt to intersect with the octree
+            float dist = AABB_quick_intersect(self.bounds, ray.origin, invD);
+            if (isnan(dist) || dist < 0) {
+                return false;
+            } else {
+                distMarch += dist + rayOffset;
+            }
         }
-    }
 
     for (int i = 0; i < drawDepth; i++) {
         if (distMarch > record->distance) {
@@ -94,12 +105,12 @@ bool Octree_octreeIntersect(Octree self, image2d_array_t atlas, BlockPalette pal
                     distMarch += tempRecord.distance + OFFSET;
                     continue;
                 }
-                if (data != ray.currentBlock || tempRecord.distance > OFFSET * 4.0f) {
+                if (data != ray.currentBlock || tempRecord.distance > rayOffset * 4.0f) {
                     *record = tempRecord;
                     *sample = tempSample;
                     return true;
                 }
-                distMarch += tempRecord.distance + OFFSET;
+                distMarch += tempRecord.distance + rayOffset;
                 continue;
             }
         }
@@ -108,7 +119,7 @@ bool Octree_octreeIntersect(Octree self, image2d_array_t atlas, BlockPalette pal
         AABB box = AABB_new(lv.x << level, (lv.x + 1) << level,
                             lv.y << level, (lv.y + 1) << level,
                             lv.z << level, (lv.z + 1) << level);
-        distMarch += AABB_exit(box, pos + offsetD, invD) + OFFSET;
+        distMarch += AABB_exit(box, pos + offsetD, invD) + rayOffset;
     }
     return false;
 }

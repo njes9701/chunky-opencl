@@ -36,4 +36,15 @@ Ray Camera_pinHole(float x, float y, Random random, __global const float* projec
     return ray;
 }
 
+Ray Camera_parallel(float x, float y, __global const float* projectorSettings) {
+    Ray ray;
+    float parallelScale = projectorSettings[0];
+    float worldDiagonal = projectorSettings[1];
+
+    ray.origin = (float3) (parallelScale * x, parallelScale * y, -worldDiagonal);
+    ray.direction = (float3) (0.0f, 0.0f, 1.0f);
+
+    return ray;
+}
+
 #endif
