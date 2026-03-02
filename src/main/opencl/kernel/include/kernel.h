@@ -90,36 +90,33 @@ typedef struct {
 
 
 bool closestIntersect(Scene self, image2d_array_t atlas, Ray ray, IntersectionRecord* record, MaterialSample* sample, Material* mat) {
-    float distance = 0;
+    bool hit = false;
+    
+    // 1. 優先測試 Octree (通常是場景中最密集的物體)
+    if (Octree_octreeIntersect(self.octree, atlas, self.blockPalette, self.materialPalette, self.drawDepth, ray, record, sample)) {
+        hit = true;
+    }
+    
+    // 2. 測試水面 Octree (只有在距離比目前撞到的更短時才有意義)
+    if (Octree_octreeIntersect(self.waterOctree, atlas, self.blockPalette, self.materialPalette, self.drawDepth, ray, record, sample)) {
+        hit = true;
+    }
 
-    for (int i = 0; i < self.drawDepth; i++) {
-        IntersectionRecord tempRecord = *record;
-        tempRecord.distance = record->distance - distance;
+    // 3. 測試 BVH (同樣只在更短的情況下更新 hit)
+    // 注意：如果場景沒有實體，這部分會很快返回
+    if (Bvh_intersect(self.worldBvh, atlas, self.materialPalette, ray, record, sample)) {
+        hit = true;
+    }
+    
+    if (Bvh_intersect(self.actorBvh, atlas, self.materialPalette, ray, record, sample)) {
+        hit = true;
+    }
 
-        Ray tempRay = ray;
-        tempRay.origin += distance * tempRay.direction;
-
-        if (tempRecord.distance <= 0) {
-            return false;
-        }
-
-        bool hit = false;
-        hit |= Octree_octreeIntersect(self.octree, atlas, self.blockPalette, self.materialPalette, self.drawDepth, tempRay, &tempRecord, sample);
-        hit |= Octree_octreeIntersect(self.waterOctree, atlas, self.blockPalette, self.materialPalette, self.drawDepth, tempRay, &tempRecord, sample);
-        hit |= Bvh_intersect(self.worldBvh, atlas, self.materialPalette, tempRay, &tempRecord, sample);
-        hit |= Bvh_intersect(self.actorBvh, atlas, self.materialPalette, tempRay, &tempRecord, sample);
-
-        if (!hit) {
-            return false;
-        }
-
-        distance += tempRecord.distance;
-
-        *record = tempRecord;
-        record->distance = distance;
+    if (hit) {
         *mat = Material_get(self.materialPalette, record->material);
         return true;
     }
+    
     return false;
 }
 

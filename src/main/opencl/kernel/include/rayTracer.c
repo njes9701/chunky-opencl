@@ -391,9 +391,22 @@ __kernel void render(
     bool doSunSampling = sceneSettings[2] > 0.5f;
     bool sunLuminosity = sceneSettings[3] > 0.5f;
     bool strictDirectLight = sceneSettings[4] > 0.5f;
+    float rrThreshold = sceneSettings[5] / 100.0f; // 俄羅斯輪盤閾值 (0.0 ~ 1.0)
     int effectiveEmitterSamplingStrategy = emittersEnabled != 0 && emitterSamplingStrategy == 0 ? 2 : emitterSamplingStrategy;
 
     for (int depth = 0; depth < *rayDepth; depth++) {
+        // 實作俄羅斯輪盤 (Russian Roulette)
+        // 在前 3 跳之後，如果路徑能量過低，則機率性終止，以提升 GPU 效率。
+        if (depth > 2) {
+            float p = fmax(throughput.x, fmax(throughput.y, throughput.z));
+            if (p < rrThreshold) {
+                if (Random_nextFloat(random) > p) {
+                    break;
+                }
+                throughput /= p; // 能量補償，保持渲染無偏
+            }
+        }
+
         IntersectionRecord record = IntersectionRecord_new();
         MaterialSample sample;
         Material material;
@@ -506,7 +519,7 @@ __kernel void render(
                     float b = n1n2 + 1;
                     float R0 = (a * a) / (b * b);
                     float c = 1 - cosTheta;
-                    float Rtheta = R0 + (1 - R0) * c * c * c * c * c;
+                    float Rtheta = R0 + (1 - R0) * (c * c * c * c * c);
 
                     if (Random_nextFloat(random) < Rtheta) {
                         ray.origin = hitPoint;

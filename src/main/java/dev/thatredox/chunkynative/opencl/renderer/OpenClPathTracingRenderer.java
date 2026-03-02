@@ -7,6 +7,7 @@ import dev.thatredox.chunkynative.opencl.renderer.ClSceneLoader;
 import dev.thatredox.chunkynative.opencl.renderer.scene.*;
 import dev.thatredox.chunkynative.opencl.util.ClIntBuffer;
 import dev.thatredox.chunkynative.opencl.util.ClMemory;
+import dev.thatredox.chunkynative.opencl.ui.OpenClRenderTimer;
 import dev.thatredox.chunkynative.util.Reflection;
 import org.jocl.*;
 
@@ -51,168 +52,173 @@ public class OpenClPathTracingRenderer implements Renderer {
         ContextManager context = ContextManager.get();
         ClSceneLoader sceneLoader = context.sceneLoader;
 
-        ReentrantLock renderLock = new ReentrantLock();
-        cl_event[] renderEvent = new cl_event[1];
-        Scene scene = manager.bufferedScene;
+        OpenClRenderTimer.start();
+        try {
+            ReentrantLock renderLock = new ReentrantLock();
+            cl_event[] renderEvent = new cl_event[1];
+            Scene scene = manager.bufferedScene;
 
-        double[] sampleBuffer = scene.getSampleBuffer();
-        float[] passBuffer = new float[sampleBuffer.length];
+            double[] sampleBuffer = scene.getSampleBuffer();
+            float[] passBuffer = new float[sampleBuffer.length];
 
-        // Ensure the scene is loaded
-        sceneLoader.ensureLoad(manager.bufferedScene);
+            // Ensure the scene is loaded
+            sceneLoader.ensureLoad(manager.bufferedScene);
 
-        // Load the kernel
-        cl_kernel kernel = clCreateKernel(context.renderer.kernel, "render", null);
+            // Load the kernel
+            cl_kernel kernel = clCreateKernel(context.renderer.kernel, "render", null);
 
-        // Generate the camera
-        ClCamera camera = new ClCamera(scene, context.context);
-        ClMemory buffer = new ClMemory(clCreateBuffer(context.context.context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-                (long) Sizeof.cl_float * passBuffer.length, Pointer.to(passBuffer), null));
-        ClMemory randomSeed = new ClMemory(
-                clCreateBuffer(context.context.context, CL_MEM_READ_ONLY, Sizeof.cl_int, null, null));
-        ClMemory bufferSpp = new ClMemory(
-                clCreateBuffer(context.context.context, CL_MEM_READ_ONLY, Sizeof.cl_int, null, null));
-        ClIntBuffer clCanvasConfig = new ClIntBuffer(new int[] {
-                scene.canvasConfig.getWidth(), scene.canvasConfig.getHeight(),
-                scene.canvasConfig.getCropWidth(), scene.canvasConfig.getCropHeight(),
-                scene.canvasConfig.getCropX(), scene.canvasConfig.getCropY()
-        }, context.context);
-        ClIntBuffer clRayDepth = new ClIntBuffer(scene.getRayDepth(), context.context);
-        ClMemory sceneSettings = new ClMemory(
-                clCreateBuffer(context.context.context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                        (long) Sizeof.cl_float * 5,
-                        Pointer.to(new float[] {
-                                ((Double) Reflection.getFieldValue(scene, "transmissivityCap", Double.class)).floatValue(),
-                                ((Boolean) Reflection.getFieldValue(scene, "fancierTranslucency", Boolean.class)) ? 1.0f : 0.0f,
-                                scene.getSunSamplingStrategy().doSunSampling() ? 1.0f : 0.0f,
-                                scene.getSunSamplingStrategy().isSunLuminosity() ? 1.0f : 0.0f,
-                                scene.getSunSamplingStrategy().isStrictDirectLight() ? 1.0f : 0.0f
-                        }), null));
+            // Generate the camera
+            ClCamera camera = new ClCamera(scene, context.context);
+            ClMemory buffer = new ClMemory(clCreateBuffer(context.context.context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+                    (long) Sizeof.cl_float * passBuffer.length, Pointer.to(passBuffer), null));
+            ClMemory randomSeed = new ClMemory(
+                    clCreateBuffer(context.context.context, CL_MEM_READ_ONLY, Sizeof.cl_int, null, null));
+            ClMemory bufferSpp = new ClMemory(
+                    clCreateBuffer(context.context.context, CL_MEM_READ_ONLY, Sizeof.cl_int, null, null));
+            ClIntBuffer clCanvasConfig = new ClIntBuffer(new int[] {
+                    scene.canvasConfig.getWidth(), scene.canvasConfig.getHeight(),
+                    scene.canvasConfig.getCropWidth(), scene.canvasConfig.getCropHeight(),
+                    scene.canvasConfig.getCropX(), scene.canvasConfig.getCropY()
+            }, context.context);
+            ClIntBuffer clRayDepth = new ClIntBuffer(scene.getRayDepth(), context.context);
+            ClMemory sceneSettings = new ClMemory(
+                    clCreateBuffer(context.context.context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                            (long) Sizeof.cl_float * 6,
+                            Pointer.to(new float[] {
+                                    ((Double) Reflection.getFieldValue(scene, "transmissivityCap", Double.class)).floatValue(),
+                                    ((Boolean) Reflection.getFieldValue(scene, "fancierTranslucency", Boolean.class)) ? 1.0f : 0.0f,
+                                    scene.getSunSamplingStrategy().doSunSampling() ? 1.0f : 0.0f,
+                                    scene.getSunSamplingStrategy().isSunLuminosity() ? 1.0f : 0.0f,
+                                    scene.getSunSamplingStrategy().isStrictDirectLight() ? 1.0f : 0.0f,
+                                    50.0f // 俄羅斯輪盤 (Russian Roulette) 閾值: 0~100
+                            }), null));
 
-        try (ClCamera ignored1 = camera;
-             ClMemory ignored2 = buffer;
-             ClMemory ignored3 = randomSeed;
-             ClMemory ignored4 = bufferSpp;
-             ClIntBuffer ignored5 = clCanvasConfig;
-             ClIntBuffer ignored6 = clRayDepth;
-             ClMemory ignored7 = sceneSettings) {
+            try (ClCamera ignored1 = camera;
+                 ClMemory ignored2 = buffer;
+                 ClMemory ignored3 = randomSeed;
+                 ClMemory ignored4 = bufferSpp;
+                 ClIntBuffer ignored5 = clCanvasConfig;
+                 ClIntBuffer ignored6 = clRayDepth;
+                 ClMemory ignored7 = sceneSettings) {
+                // Generate initial camera rays
+                camera.generate(renderLock, true);
 
-            // Generate initial camera rays
-            camera.generate(renderLock, true);
+                int bufferSppReal = 0;
+                int logicalSpp = scene.spp;
+                final int[] sceneSpp = {scene.spp};
+                long lastCallback = 0;
 
-            int bufferSppReal = 0;
-            int logicalSpp = scene.spp;
-            final int[] sceneSpp = {scene.spp};
-            long lastCallback = 0;
+                Random rand = new Random(0);
 
-            Random rand = new Random(0);
+                ForkJoinTask<?> cameraGenTask = Chunky.getCommonThreads().submit(() -> 0);
+                ForkJoinTask<?> bufferMergeTask = Chunky.getCommonThreads().submit(() -> 0);
 
-            ForkJoinTask<?> cameraGenTask = Chunky.getCommonThreads().submit(() -> 0);
-            ForkJoinTask<?> bufferMergeTask = Chunky.getCommonThreads().submit(() -> 0);
+                // This is the main rendering loop. This deals with dispatching rendering tasks. The majority of time is spent
+                // waiting for the OpenCL renderer to complete.
+                while (logicalSpp < scene.getTargetSpp()) {
+                    renderLock.lock();
+                    renderEvent[0] = new cl_event();
 
-            // This is the main rendering loop. This deals with dispatching rendering tasks. The majority of time is spent
-            // waiting for the OpenCL renderer to complete.
-            while (logicalSpp < scene.getTargetSpp()) {
-                renderLock.lock();
-                renderEvent[0] = new cl_event();
+                    clEnqueueWriteBuffer(context.context.queue, randomSeed.get(), CL_TRUE, 0, Sizeof.cl_int,
+                            Pointer.to(new int[]{rand.nextInt()}), 0, null, null);
+                    clEnqueueWriteBuffer(context.context.queue, bufferSpp.get(), CL_TRUE, 0, Sizeof.cl_int,
+                            Pointer.to(new int[]{bufferSppReal}), 0, null, null);
 
-                clEnqueueWriteBuffer(context.context.queue, randomSeed.get(), CL_TRUE, 0, Sizeof.cl_int,
-                        Pointer.to(new int[]{rand.nextInt()}), 0, null, null);
-                clEnqueueWriteBuffer(context.context.queue, bufferSpp.get(), CL_TRUE, 0, Sizeof.cl_int,
-                        Pointer.to(new int[]{bufferSppReal}), 0, null, null);
+                    int argIndex = 0;
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(camera.projectorType.get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(camera.cameraSettings.get()));
 
-                int argIndex = 0;
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(camera.projectorType.get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(camera.cameraSettings.get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getOctreeDepth().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getOctreeData().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getWaterOctreeDepth().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getWaterOctreeData().get()));
 
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getOctreeDepth().get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getOctreeData().get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getWaterOctreeDepth().get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getWaterOctreeData().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getBlockPalette().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getQuadPalette().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getAabbPalette().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getWaterPalette().get()));
 
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getBlockPalette().get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getQuadPalette().get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getAabbPalette().get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getWaterPalette().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getWorldBvh().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getActorBvh().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getTrigPalette().get()));
 
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getWorldBvh().get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getActorBvh().get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getTrigPalette().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getTexturePalette().getAtlas()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getMaterialPalette().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getEmitterGridMeta().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getEmitterGridCells().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getEmitterGridIndexes().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getEmitterGridEmitters().get()));
 
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getTexturePalette().getAtlas()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getMaterialPalette().get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getEmitterGridMeta().get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getEmitterGridCells().get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getEmitterGridIndexes().get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getEmitterGridEmitters().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getSky().skyTexture.get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getSky().skyIntensity.get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getSun().get()));
 
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getSky().skyTexture.get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getSky().skyIntensity.get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneLoader.getSun().get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(randomSeed.get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(bufferSpp.get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(clCanvasConfig.get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(clRayDepth.get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneSettings.get()));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_int, Pointer.to(new int[] { scene.getEmittersEnabled() ? 1 : 0 }));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_float, Pointer.to(new float[] { (float) scene.getEmitterIntensity() }));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_int, Pointer.to(new int[] { scene.getEmitterSamplingStrategy().ordinal() }));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_int, Pointer.to(new int[] { scene.isPreventNormalEmitterWithSampling() ? 1 : 0 }));
+                    clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(buffer.get()));
+                    clEnqueueNDRangeKernel(context.context.queue, kernel, 1, null,
+                            new long[]{passBuffer.length / 3}, null, 0, null,
+                            renderEvent[0]);
+                    clWaitForEvents(1, renderEvent);
+                    renderLock.unlock();
+                    bufferSppReal += 1;
+                    scene.spp += 1;
 
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(randomSeed.get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(bufferSpp.get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(clCanvasConfig.get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(clRayDepth.get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(sceneSettings.get()));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_int, Pointer.to(new int[] { scene.getEmittersEnabled() ? 1 : 0 }));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_float, Pointer.to(new float[] { (float) scene.getEmitterIntensity() }));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_int, Pointer.to(new int[] { scene.getEmitterSamplingStrategy().ordinal() }));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_int, Pointer.to(new int[] { scene.isPreventNormalEmitterWithSampling() ? 1 : 0 }));
-                clSetKernelArg(kernel, argIndex++, Sizeof.cl_mem, Pointer.to(buffer.get()));
-                clEnqueueNDRangeKernel(context.context.queue, kernel, 1, null,
-                        new long[]{passBuffer.length / 3}, null, 0, null,
-                        renderEvent[0]);
-                clWaitForEvents(1, renderEvent);
-                renderLock.unlock();
-                bufferSppReal += 1;
-                scene.spp += 1;
-
-                if (camera.needGenerate && cameraGenTask.isDone()) {
-                    cameraGenTask = Chunky.getCommonThreads().submit(() -> camera.generate(renderLock, true));
-                }
-
-                boolean saveEvent = isSaveEvent(manager.getSnapshotControl(), scene, logicalSpp + bufferSppReal);
-                if (bufferMergeTask.isDone() || saveEvent) {
-                    if (!scene.shouldFinalizeBuffer() && !saveEvent) {
-                        long time = System.currentTimeMillis();
-                        if (time - lastCallback > 100 && !manager.shouldFinalize()) {
-                            lastCallback = time;
-                            if (postRender.getAsBoolean()) break;
-                        }
-                        if (bufferSppReal < 1024)
-                            continue;
+                    if (camera.needGenerate && cameraGenTask.isDone()) {
+                        cameraGenTask = Chunky.getCommonThreads().submit(() -> camera.generate(renderLock, true));
                     }
 
-                    bufferMergeTask.join();
-                    if (postRender.getAsBoolean()) break;
-                    clEnqueueReadBuffer(context.context.queue, buffer.get(), CL_TRUE, 0,
-                            (long) Sizeof.cl_float * passBuffer.length, Pointer.to(passBuffer),
-                            0, null, null);
-                    int sampSpp = sceneSpp[0];
-                    int passSpp = bufferSppReal;
-                    double sinv = 1.0 / (sampSpp + passSpp);
-                    bufferSppReal = 0;
+                    boolean saveEvent = isSaveEvent(manager.getSnapshotControl(), scene, logicalSpp + bufferSppReal);
+                    if (bufferMergeTask.isDone() || saveEvent) {
+                        if (!scene.shouldFinalizeBuffer() && !saveEvent) {
+                            long time = System.currentTimeMillis();
+                            if (time - lastCallback > 100 && !manager.shouldFinalize()) {
+                                lastCallback = time;
+                                if (postRender.getAsBoolean()) break;
+                            }
+                            if (bufferSppReal < 1024)
+                                continue;
+                        }
 
-                    bufferMergeTask = Chunky.getCommonThreads().submit(() -> {
-                        Arrays.parallelSetAll(sampleBuffer, i -> (sampleBuffer[i] * sampSpp + passBuffer[i] * passSpp) * sinv);
-                        sceneSpp[0] += passSpp;
-                        scene.postProcessFrame(TaskTracker.Task.NONE);
-                        manager.redrawScreen();
-                    });
-                    logicalSpp += passSpp;
-                    if (saveEvent) {
                         bufferMergeTask.join();
                         if (postRender.getAsBoolean()) break;
+                        clEnqueueReadBuffer(context.context.queue, buffer.get(), CL_TRUE, 0,
+                                (long) Sizeof.cl_float * passBuffer.length, Pointer.to(passBuffer),
+                                0, null, null);
+                        int sampSpp = sceneSpp[0];
+                        int passSpp = bufferSppReal;
+                        double sinv = 1.0 / (sampSpp + passSpp);
+                        bufferSppReal = 0;
+
+                        bufferMergeTask = Chunky.getCommonThreads().submit(() -> {
+                            Arrays.parallelSetAll(sampleBuffer, i -> (sampleBuffer[i] * sampSpp + passBuffer[i] * passSpp) * sinv);
+                            sceneSpp[0] += passSpp;
+                            scene.postProcessFrame(TaskTracker.Task.NONE);
+                            manager.redrawScreen();
+                        });
+                        logicalSpp += passSpp;
+                        if (saveEvent) {
+                            bufferMergeTask.join();
+                            if (postRender.getAsBoolean()) break;
+                        }
                     }
                 }
+
+                cameraGenTask.join();
+                bufferMergeTask.join();
             }
 
-            cameraGenTask.join();
-            bufferMergeTask.join();
+            clReleaseKernel(kernel);
+        } finally {
+            OpenClRenderTimer.stop();
         }
-
-        clReleaseKernel(kernel);
     }
 
     private boolean isSaveEvent(SnapshotControl control, Scene scene, int spp) {
