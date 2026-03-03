@@ -7,6 +7,7 @@ include_directories(include)
 
 add_executable(kernel
         opencl.h
+        ../common/opencl_base.h
         include/block.h
         include/bvh.h
         include/camera.h

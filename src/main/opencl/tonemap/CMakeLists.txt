@@ -7,6 +7,7 @@ include_directories(include)
 
 add_executable(tonemap
         opencl.h
+        ../common/opencl_base.h
         include/double.h
         include/post_processing_filter.cl
         include/rgba.h)

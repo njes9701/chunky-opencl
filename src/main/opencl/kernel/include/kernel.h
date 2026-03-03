@@ -88,41 +88,8 @@ typedef struct {
     int drawDepth;
 } Scene;
 
-
-bool closestIntersect(Scene self, image2d_array_t atlas, Ray ray, IntersectionRecord* record, MaterialSample* sample, Material* mat) {
-    bool hit = false;
-    
-    // 1. 優先測試 Octree (通常是場景中最密集的物體)
-    if (Octree_octreeIntersect(self.octree, atlas, self.blockPalette, self.materialPalette, self.drawDepth, ray, record, sample)) {
-        hit = true;
-    }
-    
-    // 2. 測試水面 Octree (只有在距離比目前撞到的更短時才有意義)
-    if (Octree_octreeIntersect(self.waterOctree, atlas, self.blockPalette, self.materialPalette, self.drawDepth, ray, record, sample)) {
-        hit = true;
-    }
-
-    // 3. 測試 BVH (同樣只在更短的情況下更新 hit)
-    // 注意：如果場景沒有實體，這部分會很快返回
-    if (Bvh_intersect(self.worldBvh, atlas, self.materialPalette, ray, record, sample)) {
-        hit = true;
-    }
-    
-    if (Bvh_intersect(self.actorBvh, atlas, self.materialPalette, ray, record, sample)) {
-        hit = true;
-    }
-
-    if (hit) {
-        *mat = Material_get(self.materialPalette, record->material);
-        return true;
-    }
-    
-    return false;
-}
-
-void intersectSky(image2d_t skyTexture, float skyIntensity, Sun sun, image2d_array_t atlas, Ray ray, MaterialSample* sample) {
-    Sky_intersect(skyTexture, skyIntensity, ray, sample);
-    Sun_intersect(sun, atlas, ray, sample);
-}
+bool closestIntersect(Scene self, image2d_array_t atlas, Ray ray, IntersectionRecord* record, MaterialSample* sample, Material* mat);
+void initialize_ray_medium(Scene scene, Ray* ray);
+void intersectSky(image2d_t skyTexture, float skyIntensity, Sun sun, image2d_array_t atlas, Ray ray, MaterialSample* sample);
 
 #endif
