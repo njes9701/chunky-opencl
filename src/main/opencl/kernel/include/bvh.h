@@ -19,6 +19,6 @@ Bvh Bvh_new(__global const int* bvh, __global const int* trigs, MaterialPalette*
     return b;
 }
 
-bool Bvh_intersect(Bvh self, image2d_array_t atlas, MaterialPalette palette, Ray ray, IntersectionRecord* record, MaterialSample* sample);
+bool Bvh_intersect(Bvh self, image2d_array_t atlas, MaterialPalette palette, BiomeColors biome, Ray ray, IntersectionRecord* record, MaterialSample* sample);
 
 #endif

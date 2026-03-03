@@ -17,14 +17,26 @@ import dev.thatredox.chunkynative.opencl.renderer.export.ClPackedResourcePalette
 import dev.thatredox.chunkynative.opencl.renderer.export.ClTextureLoader;
 import dev.thatredox.chunkynative.opencl.renderer.scene.ClSky;
 import dev.thatredox.chunkynative.opencl.util.ClIntBuffer;
+import dev.thatredox.chunkynative.opencl.util.ClMemory;
 import dev.thatredox.chunkynative.util.FunctionCache;
 import dev.thatredox.chunkynative.util.Reflection;
 import se.llbit.chunky.renderer.ResetReason;
 import se.llbit.chunky.renderer.scene.Scene;
+import se.llbit.chunky.world.ChunkPosition;
+import se.llbit.chunky.world.biome.Biomes;
 import se.llbit.math.Grid;
+import se.llbit.math.Vector3i;
+import org.jocl.Pointer;
+import org.jocl.Sizeof;
 
 import java.util.List;
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Collection;
+
+import static org.jocl.CL.CL_MEM_COPY_HOST_PTR;
+import static org.jocl.CL.CL_MEM_READ_ONLY;
+import static org.jocl.CL.clCreateBuffer;
 
 public class ClSceneLoader extends AbstractSceneLoader {
     protected final FunctionCache<int[], ClIntBuffer> clWorldBvh;
@@ -41,6 +53,12 @@ public class ClSceneLoader extends AbstractSceneLoader {
     protected ClIntBuffer emitterGridCells = null;
     protected ClIntBuffer emitterGridIndexes = null;
     protected ClIntBuffer emitterGridEmitters = null;
+    protected ClIntBuffer biomeMeta = null;
+    protected ClIntBuffer biomeGrid = null;
+    protected ClMemory biomeGrass = null;
+    protected ClMemory biomeFoliage = null;
+    protected ClMemory biomeDryFoliage = null;
+    protected ClMemory biomeWater = null;
     private final ClContext context;
 
     public ClSceneLoader(ClContext context) {
@@ -67,6 +85,7 @@ public class ClSceneLoader extends AbstractSceneLoader {
                 packedSun = new PackedSun(scene.sun(), getTexturePalette());
             }
             loadEmitterGrid(scene);
+            loadBiomeColors(scene);
         }
         return loadSuccess;
     }
@@ -118,6 +137,148 @@ public class ClSceneLoader extends AbstractSceneLoader {
         emitterGridCells = new ClIntBuffer(constructedGrid == null || constructedGrid.length == 0 ? new int[] {0, 0} : constructedGrid, context);
         emitterGridIndexes = new ClIntBuffer(positionIndexes == null || positionIndexes.length == 0 ? new int[] {0} : positionIndexes, context);
         emitterGridEmitters = new ClIntBuffer(emitters, context);
+    }
+
+    private void loadBiomeColors(Scene scene) {
+        if (biomeMeta != null) biomeMeta.close();
+        if (biomeGrid != null) biomeGrid.close();
+        if (biomeGrass != null) biomeGrass.close();
+        if (biomeFoliage != null) biomeFoliage.close();
+        if (biomeDryFoliage != null) biomeDryFoliage.close();
+        if (biomeWater != null) biomeWater.close();
+
+        float[] defaultGrass = Biomes.biomesPrePalette[0].grassColorLinear;
+        float[] defaultFoliage = Biomes.biomesPrePalette[0].foliageColorLinear;
+        float[] defaultDryFoliage = Biomes.biomesPrePalette[0].dryFoliageColorLinear;
+        float[] defaultWater = Biomes.biomesPrePalette[0].waterColorLinear;
+
+        int[] meta = new int[18];
+        Vector3i origin = scene.getOrigin();
+        meta[4] = origin.x;
+        meta[5] = origin.z;
+
+        meta[6] = Float.floatToIntBits(defaultGrass[0]);
+        meta[7] = Float.floatToIntBits(defaultGrass[1]);
+        meta[8] = Float.floatToIntBits(defaultGrass[2]);
+        meta[9] = Float.floatToIntBits(defaultFoliage[0]);
+        meta[10] = Float.floatToIntBits(defaultFoliage[1]);
+        meta[11] = Float.floatToIntBits(defaultFoliage[2]);
+        meta[12] = Float.floatToIntBits(defaultDryFoliage[0]);
+        meta[13] = Float.floatToIntBits(defaultDryFoliage[1]);
+        meta[14] = Float.floatToIntBits(defaultDryFoliage[2]);
+        meta[15] = Float.floatToIntBits(defaultWater[0]);
+        meta[16] = Float.floatToIntBits(defaultWater[1]);
+        meta[17] = Float.floatToIntBits(defaultWater[2]);
+
+        Collection<ChunkPosition> sceneChunks = scene.getChunks();
+        boolean useBiome = scene.biomeColorsEnabled();
+        if (!useBiome || sceneChunks == null || sceneChunks.isEmpty()) {
+            biomeMeta = new ClIntBuffer(meta, context);
+            biomeGrid = new ClIntBuffer(new int[] {0}, context);
+            biomeGrass = createFloatBuffer(new float[] {0});
+            biomeFoliage = createFloatBuffer(new float[] {0});
+            biomeDryFoliage = createFloatBuffer(new float[] {0});
+            biomeWater = createFloatBuffer(new float[] {0});
+            return;
+        }
+
+        List<ChunkPosition> chunks = new ArrayList<>(sceneChunks);
+        int minChunkX = Integer.MAX_VALUE;
+        int maxChunkX = Integer.MIN_VALUE;
+        int minChunkZ = Integer.MAX_VALUE;
+        int maxChunkZ = Integer.MIN_VALUE;
+        for (ChunkPosition pos : chunks) {
+            minChunkX = Math.min(minChunkX, pos.x);
+            maxChunkX = Math.max(maxChunkX, pos.x);
+            minChunkZ = Math.min(minChunkZ, pos.z);
+            maxChunkZ = Math.max(maxChunkZ, pos.z);
+        }
+
+        int sizeX = maxChunkX - minChunkX + 1;
+        int sizeZ = maxChunkZ - minChunkZ + 1;
+        if (sizeX <= 0 || sizeZ <= 0) {
+            biomeMeta = new ClIntBuffer(meta, context);
+            biomeGrid = new ClIntBuffer(new int[] {0}, context);
+            biomeGrass = createFloatBuffer(new float[] {0});
+            biomeFoliage = createFloatBuffer(new float[] {0});
+            biomeDryFoliage = createFloatBuffer(new float[] {0});
+            biomeWater = createFloatBuffer(new float[] {0});
+            return;
+        }
+
+        meta[0] = minChunkX;
+        meta[1] = minChunkZ;
+        meta[2] = sizeX;
+        meta[3] = sizeZ;
+
+        int[] grid = new int[sizeX * sizeZ];
+        Arrays.fill(grid, -1);
+
+        int chunkCount = chunks.size();
+        int perChunk = 16 * 16 * 3;
+        float[] grass = new float[chunkCount * perChunk];
+        float[] foliage = new float[chunkCount * perChunk];
+        float[] dryFoliage = new float[chunkCount * perChunk];
+        float[] water = new float[chunkCount * perChunk];
+
+        for (int i = 0; i < chunkCount; i++) {
+            ChunkPosition pos = chunks.get(i);
+            int gx = pos.x - minChunkX;
+            int gz = pos.z - minChunkZ;
+            if (gx >= 0 && gx < sizeX && gz >= 0 && gz < sizeZ) {
+                grid[gz * sizeX + gx] = i;
+            }
+
+            int base = i * perChunk;
+            int worldBaseX = pos.x << 4;
+            int worldBaseZ = pos.z << 4;
+            for (int z = 0; z < 16; z++) {
+                int worldZ = worldBaseZ + z;
+                int octreeZ = worldZ - origin.z;
+                for (int x = 0; x < 16; x++) {
+                    int worldX = worldBaseX + x;
+                    int octreeX = worldX - origin.x;
+                    int offset = base + (z * 16 + x) * 3;
+
+                    float[] g = scene.getGrassColor(octreeX, 0, octreeZ);
+                    grass[offset] = g[0];
+                    grass[offset + 1] = g[1];
+                    grass[offset + 2] = g[2];
+
+                    float[] f = scene.getFoliageColor(octreeX, 0, octreeZ);
+                    foliage[offset] = f[0];
+                    foliage[offset + 1] = f[1];
+                    foliage[offset + 2] = f[2];
+
+                    float[] d = scene.getDryFoliageColor(octreeX, 0, octreeZ);
+                    dryFoliage[offset] = d[0];
+                    dryFoliage[offset + 1] = d[1];
+                    dryFoliage[offset + 2] = d[2];
+
+                    float[] w = scene.getWaterColor(octreeX, 0, octreeZ);
+                    water[offset] = w[0];
+                    water[offset + 1] = w[1];
+                    water[offset + 2] = w[2];
+                }
+            }
+        }
+
+        biomeMeta = new ClIntBuffer(meta, context);
+        biomeGrid = new ClIntBuffer(grid, context);
+        biomeGrass = createFloatBuffer(grass);
+        biomeFoliage = createFloatBuffer(foliage);
+        biomeDryFoliage = createFloatBuffer(dryFoliage);
+        biomeWater = createFloatBuffer(water);
+    }
+
+    private ClMemory createFloatBuffer(float[] data) {
+        if (data.length == 0) {
+            data = new float[] {0.0f};
+        }
+        return new ClMemory(clCreateBuffer(context.context,
+                CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                (long) Sizeof.cl_float * data.length,
+                Pointer.to(data), null));
     }
 
     private int[] mapOctree(int[] octree, int[] blockMapping) {
@@ -273,5 +434,35 @@ public class ClSceneLoader extends AbstractSceneLoader {
     public ClIntBuffer getEmitterGridEmitters() {
         assert emitterGridEmitters != null;
         return emitterGridEmitters;
+    }
+
+    public ClIntBuffer getBiomeMeta() {
+        assert biomeMeta != null;
+        return biomeMeta;
+    }
+
+    public ClIntBuffer getBiomeGrid() {
+        assert biomeGrid != null;
+        return biomeGrid;
+    }
+
+    public ClMemory getBiomeGrass() {
+        assert biomeGrass != null;
+        return biomeGrass;
+    }
+
+    public ClMemory getBiomeFoliage() {
+        assert biomeFoliage != null;
+        return biomeFoliage;
+    }
+
+    public ClMemory getBiomeDryFoliage() {
+        assert biomeDryFoliage != null;
+        return biomeDryFoliage;
+    }
+
+    public ClMemory getBiomeWater() {
+        assert biomeWater != null;
+        return biomeWater;
     }
 }

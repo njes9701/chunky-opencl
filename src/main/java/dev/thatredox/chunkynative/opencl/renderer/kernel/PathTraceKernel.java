@@ -50,6 +50,12 @@ public class PathTraceKernel implements AutoCloseable {
 
         binder.setMem(bindings.getSceneLoader().getTexturePalette().getAtlas());
         binder.setMem(bindings.getSceneLoader().getMaterialPalette().get());
+        binder.setMem(bindings.getSceneLoader().getBiomeMeta().get());
+        binder.setMem(bindings.getSceneLoader().getBiomeGrid().get());
+        binder.setMem(bindings.getSceneLoader().getBiomeGrass().get());
+        binder.setMem(bindings.getSceneLoader().getBiomeFoliage().get());
+        binder.setMem(bindings.getSceneLoader().getBiomeDryFoliage().get());
+        binder.setMem(bindings.getSceneLoader().getBiomeWater().get());
         binder.setMem(bindings.getSceneLoader().getEmitterGridMeta().get());
         binder.setMem(bindings.getSceneLoader().getEmitterGridCells().get());
         binder.setMem(bindings.getSceneLoader().getEmitterGridIndexes().get());

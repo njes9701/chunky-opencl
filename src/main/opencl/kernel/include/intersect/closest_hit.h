@@ -4,22 +4,22 @@ bool closestIntersect(Scene self, image2d_array_t atlas, Ray ray, IntersectionRe
     bool hit = false;
     
     // 1. 優先測試 Octree (通常是場景中最密集的物體)
-    if (Octree_octreeIntersect(self.octree, atlas, self.blockPalette, self.materialPalette, self.drawDepth, ray, record, sample)) {
+    if (Octree_octreeIntersect(self.octree, atlas, self.blockPalette, self.materialPalette, self.biome, self.drawDepth, ray, record, sample)) {
         hit = true;
     }
     
     // 2. 測試水面 Octree (只有在距離比目前撞到的更短時才有意義)
-    if (Octree_octreeIntersect(self.waterOctree, atlas, self.blockPalette, self.materialPalette, self.drawDepth, ray, record, sample)) {
+    if (Octree_octreeIntersect(self.waterOctree, atlas, self.blockPalette, self.materialPalette, self.biome, self.drawDepth, ray, record, sample)) {
         hit = true;
     }
 
     // 3. 測試 BVH (同樣只在更短的情況下更新 hit)
     // 注意：如果場景沒有實體，這部分會很快返回
-    if (Bvh_intersect(self.worldBvh, atlas, self.materialPalette, ray, record, sample)) {
+    if (Bvh_intersect(self.worldBvh, atlas, self.materialPalette, self.biome, ray, record, sample)) {
         hit = true;
     }
     
-    if (Bvh_intersect(self.actorBvh, atlas, self.materialPalette, ray, record, sample)) {
+    if (Bvh_intersect(self.actorBvh, atlas, self.materialPalette, self.biome, ray, record, sample)) {
         hit = true;
     }
 

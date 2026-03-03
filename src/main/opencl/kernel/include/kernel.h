@@ -8,6 +8,7 @@
 #include "constants.h"
 #include "bvh.h"
 #include "sky.h"
+#include "biome.h"
 
 typedef struct {
     __global const int* meta;
@@ -84,6 +85,7 @@ typedef struct {
     Bvh actorBvh;
     BlockPalette blockPalette;
     MaterialPalette materialPalette;
+    BiomeColors biome;
     EmitterGrid emitterGrid;
     int drawDepth;
 } Scene;

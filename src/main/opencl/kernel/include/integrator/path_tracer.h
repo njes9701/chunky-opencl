@@ -84,6 +84,12 @@ __kernel void render(
 
     image2d_array_t textureAtlas,
     __global const int* matPalette,
+    __global const int* biomeMeta,
+    __global const int* biomeGrid,
+    __global const float* biomeGrass,
+    __global const float* biomeFoliage,
+    __global const float* biomeDryFoliage,
+    __global const float* biomeWater,
     __global const int* emitterGridMeta,
     __global const int* emitterGridCells,
     __global const int* emitterGridIndexes,
@@ -116,6 +122,7 @@ __kernel void render(
     scene.worldBvh = Bvh_new(worldBvhData, bvhTrigs, &scene.materialPalette);
     scene.actorBvh = Bvh_new(actorBvhData, bvhTrigs, &scene.materialPalette);
     scene.blockPalette = BlockPalette_new(bPalette, quadModels, aabbModels, waterModels, &scene.materialPalette);
+    scene.biome = BiomeColors_new(biomeMeta, biomeGrid, biomeGrass, biomeFoliage, biomeDryFoliage, biomeWater);
     scene.emitterGrid = EmitterGrid_new(emitterGridMeta, emitterGridCells, emitterGridIndexes, emitterGridEmitters);
     scene.drawDepth = 256;
 
@@ -323,6 +330,12 @@ __kernel void preview(
 
     image2d_array_t textureAtlas,
     __global const int* matPalette,
+    __global const int* biomeMeta,
+    __global const int* biomeGrid,
+    __global const float* biomeGrass,
+    __global const float* biomeFoliage,
+    __global const float* biomeDryFoliage,
+    __global const float* biomeWater,
 
     image2d_t skyTexture,
     __global const float* skyIntensity,
@@ -350,6 +363,7 @@ __kernel void preview(
     scene.worldBvh = Bvh_new(worldBvhData, bvhTrigs, &scene.materialPalette);
     scene.actorBvh = Bvh_new(actorBvhData, bvhTrigs, &scene.materialPalette);
     scene.blockPalette = BlockPalette_new(bPalette, quadModels, aabbModels, waterModels, &scene.materialPalette);
+    scene.biome = BiomeColors_new(biomeMeta, biomeGrid, biomeGrass, biomeFoliage, biomeDryFoliage, biomeWater);
     scene.emitterGrid = EmitterGrid_new(bPalette, bPalette, bPalette, bPalette);
     scene.drawDepth = 256;
 

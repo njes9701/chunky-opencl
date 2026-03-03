@@ -267,6 +267,8 @@ bool WaterModel_sampleTriangle(
         Material material,
         image2d_array_t atlas,
         Ray ray,
+        int3 blockPos,
+        BiomeColors biome,
         IntersectionRecord* record,
         MaterialSample* sample
 ) {
@@ -299,7 +301,7 @@ bool WaterModel_sampleTriangle(
     float w = 1.0f - u - v;
     float2 texCoord = ta * w + tb * u + tc * v;
     MaterialSample tempSample;
-    if (!Material_sample_mode(material, atlas, texCoord, false, &tempSample)) {
+    if (!Material_sample_mode(material, atlas, texCoord, false, blockPos, biome, &tempSample)) {
         return false;
     }
 
@@ -321,6 +323,8 @@ bool WaterModel_intersect(
         MaterialPalette materialPalette,
         int modelPointer,
         Ray ray,
+        int3 blockPos,
+        BiomeColors biome,
         IntersectionRecord* record,
         MaterialSample* sample
 ) {
@@ -331,7 +335,7 @@ bool WaterModel_intersect(
     if (((data >> 16) & 1) != 0) {
         IntersectionRecord tempRecord = *record;
         if (AABB_full_intersect_map_2(AABB_new(0, 1, 0, 1, 0, 1), ray, &tempRecord) &&
-                Material_sample_mode(material, atlas, tempRecord.texCoord, false, sample)) {
+                Material_sample_mode(material, atlas, tempRecord.texCoord, false, blockPos, biome, sample)) {
             tempRecord.material = materialId;
             *record = tempRecord;
             return true;
@@ -347,29 +351,29 @@ bool WaterModel_intersect(
     float c3 = WaterModel_cornerHeight((data >> 12) & 0xF);
 
     hit |= WaterModel_sampleTriangle((float3)(0.0f, 0.0f, 0.0f), (float3)(1.0f, 0.0f, 0.0f), (float3)(0.0f, 0.0f, 1.0f),
-            (float2)(0.0f, 0.0f), (float2)(1.0f, 0.0f), (float2)(0.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+            (float2)(0.0f, 0.0f), (float2)(1.0f, 0.0f), (float2)(0.0f, 1.0f), material, atlas, ray, blockPos, biome, &tempRecord, sample);
     hit |= WaterModel_sampleTriangle((float3)(0.0f, 0.0f, 1.0f), (float3)(1.0f, 0.0f, 0.0f), (float3)(1.0f, 0.0f, 1.0f),
-            (float2)(0.0f, 1.0f), (float2)(1.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+            (float2)(0.0f, 1.0f), (float2)(1.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, blockPos, biome, &tempRecord, sample);
     hit |= WaterModel_sampleTriangle((float3)(0.0f, c0, 1.0f), (float3)(1.0f, c1, 1.0f), (float3)(1.0f, c2, 0.0f),
-            (float2)(0.0f, 0.0f), (float2)(1.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+            (float2)(0.0f, 0.0f), (float2)(1.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, blockPos, biome, &tempRecord, sample);
     hit |= WaterModel_sampleTriangle((float3)(0.0f, c3, 0.0f), (float3)(0.0f, c0, 1.0f), (float3)(1.0f, c2, 0.0f),
-            (float2)(0.0f, 1.0f), (float2)(0.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+            (float2)(0.0f, 1.0f), (float2)(0.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, blockPos, biome, &tempRecord, sample);
     hit |= WaterModel_sampleTriangle((float3)(0.0f, c3, 0.0f), (float3)(0.0f, 0.0f, 0.0f), (float3)(0.0f, c0, 1.0f),
-            (float2)(0.0f, 1.0f), (float2)(0.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+            (float2)(0.0f, 1.0f), (float2)(0.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, blockPos, biome, &tempRecord, sample);
     hit |= WaterModel_sampleTriangle((float3)(0.0f, 0.0f, 1.0f), (float3)(0.0f, c0, 1.0f), (float3)(0.0f, 0.0f, 0.0f),
-            (float2)(1.0f, 0.0f), (float2)(1.0f, 1.0f), (float2)(0.0f, 0.0f), material, atlas, ray, &tempRecord, sample);
+            (float2)(1.0f, 0.0f), (float2)(1.0f, 1.0f), (float2)(0.0f, 0.0f), material, atlas, ray, blockPos, biome, &tempRecord, sample);
     hit |= WaterModel_sampleTriangle((float3)(1.0f, c2, 0.0f), (float3)(1.0f, c1, 1.0f), (float3)(1.0f, 0.0f, 0.0f),
-            (float2)(0.0f, 1.0f), (float2)(1.0f, 1.0f), (float2)(0.0f, 0.0f), material, atlas, ray, &tempRecord, sample);
+            (float2)(0.0f, 1.0f), (float2)(1.0f, 1.0f), (float2)(0.0f, 0.0f), material, atlas, ray, blockPos, biome, &tempRecord, sample);
     hit |= WaterModel_sampleTriangle((float3)(1.0f, c1, 1.0f), (float3)(1.0f, 0.0f, 1.0f), (float3)(1.0f, 0.0f, 0.0f),
-            (float2)(1.0f, 1.0f), (float2)(1.0f, 0.0f), (float2)(0.0f, 0.0f), material, atlas, ray, &tempRecord, sample);
+            (float2)(1.0f, 1.0f), (float2)(1.0f, 0.0f), (float2)(0.0f, 0.0f), material, atlas, ray, blockPos, biome, &tempRecord, sample);
     hit |= WaterModel_sampleTriangle((float3)(0.0f, c3, 0.0f), (float3)(1.0f, c2, 0.0f), (float3)(0.0f, 0.0f, 0.0f),
-            (float2)(0.0f, 1.0f), (float2)(1.0f, 1.0f), (float2)(0.0f, 0.0f), material, atlas, ray, &tempRecord, sample);
+            (float2)(0.0f, 1.0f), (float2)(1.0f, 1.0f), (float2)(0.0f, 0.0f), material, atlas, ray, blockPos, biome, &tempRecord, sample);
     hit |= WaterModel_sampleTriangle((float3)(1.0f, 0.0f, 0.0f), (float3)(0.0f, 0.0f, 0.0f), (float3)(1.0f, c2, 0.0f),
-            (float2)(1.0f, 0.0f), (float2)(0.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+            (float2)(1.0f, 0.0f), (float2)(0.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, blockPos, biome, &tempRecord, sample);
     hit |= WaterModel_sampleTriangle((float3)(0.0f, c0, 1.0f), (float3)(0.0f, 0.0f, 1.0f), (float3)(1.0f, c1, 1.0f),
-            (float2)(0.0f, 1.0f), (float2)(0.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, &tempRecord, sample);
+            (float2)(0.0f, 1.0f), (float2)(0.0f, 0.0f), (float2)(1.0f, 1.0f), material, atlas, ray, blockPos, biome, &tempRecord, sample);
     hit |= WaterModel_sampleTriangle((float3)(1.0f, 0.0f, 1.0f), (float3)(1.0f, c1, 1.0f), (float3)(0.0f, 0.0f, 1.0f),
-            (float2)(1.0f, 0.0f), (float2)(1.0f, 1.0f), (float2)(0.0f, 0.0f), material, atlas, ray, &tempRecord, sample);
+            (float2)(1.0f, 0.0f), (float2)(1.0f, 1.0f), (float2)(0.0f, 0.0f), material, atlas, ray, blockPos, biome, &tempRecord, sample);
 
     if (hit) {
         tempRecord.material = materialId;
@@ -378,7 +382,7 @@ bool WaterModel_intersect(
     return hit;
 }
 
-bool BlockPalette_intersectNormalizedBlock(BlockPalette self, image2d_array_t atlas, MaterialPalette materialPalette, int block, int3 blockPosition, Ray ray, IntersectionRecord* record, MaterialSample* sample) {
+bool BlockPalette_intersectNormalizedBlock(BlockPalette self, image2d_array_t atlas, MaterialPalette materialPalette, BiomeColors biome, int block, int3 blockPosition, Ray ray, IntersectionRecord* record, MaterialSample* sample) {
     // ANY_TYPE. Should not be intersected.
     if (block == 0x7FFFFFFE) {
         return false;
@@ -412,7 +416,7 @@ bool BlockPalette_intersectNormalizedBlock(BlockPalette self, image2d_array_t at
                 }
 
                 Material material = Material_get(materialPalette, tempRecord.material);
-                hit = Material_sample_mode(material, atlas, tempRecord.texCoord, true, sample);
+                hit = Material_sample_mode(material, atlas, tempRecord.texCoord, true, blockPosition, biome, sample);
                 if (hit) {
                     if (insideBlock && Material_isRefractive(material) && !Material_isOpaque(material) &&
                             dot(tempRecord.normal, tempRay.direction) > 0.0f &&
@@ -435,7 +439,7 @@ bool BlockPalette_intersectNormalizedBlock(BlockPalette self, image2d_array_t at
             for (int i = 0; i < boxes; i++) {
                 int offset = modelPointer + 1 + i * TEX_AABB_SIZE;
                 TexturedAABB box = TexturedAABB_new(self.aabbModels, offset);
-                hit |= TexturedAABB_intersect(box, atlas, materialPalette, tempRay, record, sample);
+                hit |= TexturedAABB_intersect(box, atlas, materialPalette, tempRay, blockPosition, biome, record, sample);
             }
             if (hit) {
                 record->block = block;
@@ -447,7 +451,7 @@ bool BlockPalette_intersectNormalizedBlock(BlockPalette self, image2d_array_t at
             for (int i = 0; i < quads; i++) {
                 int offset = modelPointer + 1 + i * QUAD_SIZE;
                 Quad q = Quad_new(self.quadModels, offset);
-                hit |= Quad_intersect(q, atlas, materialPalette, tempRay, record, sample);
+                hit |= Quad_intersect(q, atlas, materialPalette, tempRay, blockPosition, biome, record, sample);
             }
             if (hit) {
                 record->block = block;
@@ -459,7 +463,7 @@ bool BlockPalette_intersectNormalizedBlock(BlockPalette self, image2d_array_t at
             return false;
         }
         case 5: {
-            hit = WaterModel_intersect(self.waterModels, atlas, materialPalette, modelPointer, tempRay, &tempRecord, sample);
+            hit = WaterModel_intersect(self.waterModels, atlas, materialPalette, modelPointer, tempRay, blockPosition, biome, &tempRecord, sample);
             if (hit) {
                 tempRecord.block = block;
                 *record = tempRecord;

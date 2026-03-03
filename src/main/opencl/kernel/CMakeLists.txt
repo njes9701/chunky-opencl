@@ -10,6 +10,7 @@ add_executable(kernel
         ../common/opencl_base.h
         include/block.h
         include/bvh.h
+        include/biome.h
         include/camera.h
         include/constants.h
         include/kernel.h

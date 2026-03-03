@@ -9,6 +9,7 @@
 #include "utils.h"
 #include "constants.h"
 #include "random.h"
+#include "biome.h"
 
 typedef struct {
     __global const int* palette;
@@ -50,13 +51,13 @@ typedef struct {
     float roughness;
 } MaterialSample;
 
-bool Material_sample_mode(Material self, image2d_array_t atlas, float2 uv, bool allowTransparentHit, MaterialSample* sample);
+bool Material_sample_mode(Material self, image2d_array_t atlas, float2 uv, bool allowTransparentHit, int3 worldPos, BiomeColors biome, MaterialSample* sample);
 
-bool Material_sample(Material self, image2d_array_t atlas, float2 uv, MaterialSample* sample) {
-    return Material_sample_mode(self, atlas, uv, false, sample);
+bool Material_sample(Material self, image2d_array_t atlas, float2 uv, int3 worldPos, BiomeColors biome, MaterialSample* sample) {
+    return Material_sample_mode(self, atlas, uv, false, worldPos, biome, sample);
 }
 
-bool Material_sample_mode(Material self, image2d_array_t atlas, float2 uv, bool allowTransparentHit, MaterialSample* sample) {
+bool Material_sample_mode(Material self, image2d_array_t atlas, float2 uv, bool allowTransparentHit, int3 worldPos, BiomeColors biome, MaterialSample* sample) {
     // Color
     float4 color;
     if (self.flags & 0b00001)
@@ -82,16 +83,16 @@ bool Material_sample_mode(Material self, image2d_array_t atlas, float2 uv, bool 
             sample->color *= colorFromArgb(self.tint);
             break;
         case 1:
-            // TODO Proper foliage tint
-            sample->color *= colorFromArgb(0xFF71A74D);
+            sample->color.xyz *= BiomeColors_getFoliage(biome, worldPos);
             break;
         case 2:
-            // TODO Proper grass tint
-            sample->color *= colorFromArgb(0xFF8EB971);
+            sample->color.xyz *= BiomeColors_getGrass(biome, worldPos);
             break;
         case 3:
-            // TODO Proper water tint
-            sample->color *= colorFromArgb(0xFF3F76E4);
+            sample->color.xyz *= BiomeColors_getWater(biome, worldPos);
+            break;
+        case 4:
+            sample->color.xyz *= BiomeColors_getDryFoliage(biome, worldPos);
             break;
     }
 

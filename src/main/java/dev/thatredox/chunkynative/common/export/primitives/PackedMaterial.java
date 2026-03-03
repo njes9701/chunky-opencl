@@ -79,6 +79,8 @@ public class PackedMaterial implements Packer {
                     return ColorUtil.getRGB(tint.tint) | 0xFF000000;
                 case BIOME_FOLIAGE:
                     return 1 << 24;
+                case BIOME_DRY_FOLIAGE:
+                    return 4 << 24;
                 case BIOME_GRASS:
                     return 2 << 24;
                 case BIOME_WATER:
@@ -124,6 +126,7 @@ public class PackedMaterial implements Packer {
      *                 0x01 = foliage color
      *                 0x02 = grass color
      *                 0x03 = water color
+     *                 0x04 = dry foliage color
      * 2 & 3: Color texture reference
      * 4: Top 24 bits represent the surface normal. First 8 bits represent the emittance.
      * 5: First 8 bits represent the specularness. Next 8 bits represent the metalness. Next 8 bits represent the roughness.

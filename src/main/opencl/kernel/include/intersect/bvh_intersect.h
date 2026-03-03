@@ -1,6 +1,6 @@
 #include "bvh.h"
 
-bool Bvh_intersect(Bvh self, image2d_array_t atlas, MaterialPalette palette, Ray ray, IntersectionRecord* record, MaterialSample* sample) {
+bool Bvh_intersect(Bvh self, image2d_array_t atlas, MaterialPalette palette, BiomeColors biome, Ray ray, IntersectionRecord* record, MaterialSample* sample) {
     bool hit = false;
     
     int toVisit = 0;
@@ -20,7 +20,7 @@ bool Bvh_intersect(Bvh self, image2d_array_t atlas, MaterialPalette palette, Ray
 
             for (int i = 0; i < numPrim; i++) {
                 Triangle trig = Triangle_new(self.trigs, primIndex + 1 + TRIANGLE_SIZE * i);
-                hit |= Triangle_intersect(trig, atlas, palette, ray, record, sample);
+                hit |= Triangle_intersect(trig, atlas, palette, ray, biome, record, sample);
             }
 
             if (toVisit == 0) break;
